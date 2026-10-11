@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/identity.dart';
+import '../../core/links.dart';
 import '../../core/settings.dart';
 import '../../core/system_info.dart';
 import '../../desktop/desktop_integration.dart';
@@ -256,9 +257,56 @@ class SettingsScreen extends StatelessWidget {
               title: s.t('settings.noServers'),
               subtitle: s.t('settings.noServers.hint'),
             ),
+            const _SupportCard(),
           ],
         ),
       ],
+    );
+  }
+}
+
+/// "Support the author" block at the end of About: a plain secondary button
+/// in the app's own style.
+class _SupportCard extends StatelessWidget {
+  const _SupportCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.s;
+    final t = Theme.of(context).textTheme;
+    final c = context.c;
+    return Padding(
+      key: const ValueKey('support-card'),
+      padding: const EdgeInsets.all(Gap.l),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.favorite_border_rounded, size: 18, color: c.textSecondary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(s.t('support.title'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+              ),
+            ],
+          ),
+          const SizedBox(height: Gap.xs),
+          Padding(
+            padding: const EdgeInsets.only(left: 30),
+            child: Text(s.t('support.body'), style: t.bodySmall?.copyWith(color: c.textSecondary)),
+          ),
+          const SizedBox(height: Gap.m),
+          Padding(
+            padding: const EdgeInsets.only(left: 30),
+            child: FilledButton.icon(
+              onPressed: openBoosty,
+              style: context.secondaryButton,
+              icon: const Icon(Icons.favorite_border_rounded),
+              label: Text(s.t('support.button')),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

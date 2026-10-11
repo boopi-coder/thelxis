@@ -12,7 +12,7 @@ No accounts, no relays, no cloud. Encryption keys live only on your devices.
 [![Linux](https://img.shields.io/badge/Linux-deb%20%7C%20tar.gz-fcc624?logo=linux&logoColor=black)](#download)
 [![Android](https://img.shields.io/badge/Android-7%2B-3ddc84?logo=android&logoColor=white)](#download)
 [![License](https://img.shields.io/badge/license-MIT-22c55e)](LICENSE)
-[![Made by](https://img.shields.io/badge/made%20by-boopi.ru-7c3aed)](https://boopi.ru)
+[![Made by](https://img.shields.io/badge/made%20by-boopi.site-7c3aed)](https://boopi.site)
 [![Boosty](https://img.shields.io/badge/Boosty-boopi__coder-f15f2c?logo=boosty&logoColor=white)](https://boosty.to/boopi_coder)
 
 **English** | [Русский](README.ru.md)
@@ -189,6 +189,6 @@ MIT, see [LICENSE](LICENSE). Use it, change it, ship it.
 
 <div align="center">
 
-Made by [boopi.ru](https://boopi.ru) · [Русская версия README](README.ru.md)
+Made by [boopi.site](https://boopi.site) · [Русская версия README](README.ru.md)
 
 </div>

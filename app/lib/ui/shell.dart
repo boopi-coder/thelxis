@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../core/links.dart';
 import '../desktop/desktop_integration.dart';
 import '../l10n/strings.dart';
 import '../session/session_manager.dart';
@@ -240,6 +241,8 @@ class _Sidebar extends StatelessWidget {
                   const SizedBox(height: 2),
                 ],
                 const Spacer(),
+                _SupportLink(extended: extended),
+                const SizedBox(height: 2),
                 _SidebarStatus(extended: extended),
               ],
             ),
@@ -302,6 +305,51 @@ class _NavItem extends StatelessWidget {
       ),
     );
     return extended ? item : Tooltip(message: label, child: item);
+  }
+}
+
+/// Quiet "support the author" link above the status row; a bare heart with a
+/// tooltip in the icon rail.
+class _SupportLink extends StatelessWidget {
+  const _SupportLink({required this.extended});
+
+  final bool extended;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final s = context.s;
+    final label = s.t('support.title');
+    final link = HoverTint(
+      key: const ValueKey('support-link'),
+      onTap: openBoosty,
+      semanticLabel: label,
+      borderRadius: BorderRadius.circular(Radii.control),
+      child: SizedBox(
+        height: 32,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: extended ? 10 : 0),
+          child: Row(
+            mainAxisAlignment: extended ? MainAxisAlignment.start : MainAxisAlignment.center,
+            children: [
+              Icon(Icons.favorite_border_rounded, size: 16, color: c.textSecondary),
+              if (extended) ...[
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    s.t('support.link'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: c.textSecondary),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+    return extended ? link : Tooltip(message: label, child: link);
   }
 }
 

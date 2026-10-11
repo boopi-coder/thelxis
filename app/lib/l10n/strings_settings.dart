@@ -123,6 +123,14 @@ final Map<String, (String, String)> kSettingsStrings = {
     'Устройства соединяются напрямую, всё защищено сквозным шифрованием. Ключ вашей личности никогда не покидает это устройство.',
   ),
 
+  'support.title': ('Support the author', 'Поддержать автора'),
+  'support.body': (
+    'Thelxis is free and open source. Support on Boosty helps keep the project going and launch new ones.',
+    'Thelxis бесплатный и с открытым кодом. Поддержка на Boosty помогает развивать проект и запускать новые.',
+  ),
+  'support.button': ('Support on Boosty', 'Поддержать на Boosty'),
+  'support.link': ('Support', 'Поддержать'),
+
   'perm.pw.intro': (
     'Lets you connect to this device without anyone present. Only a key derived from the password is stored, never the password itself.',
     'Позволяет подключаться к этому устройству, когда рядом никого нет. Хранится только ключ, полученный из пароля, но не сам пароль.',
