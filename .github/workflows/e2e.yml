@@ -19,7 +19,7 @@ on:
   workflow_call:
 
 concurrency:
-  group: e2e-${{ github.ref }}
+  group: e2e-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 permissions:
@@ -105,7 +105,7 @@ jobs:
           echo "--- cores"; ls -la "$RUNNER_TEMP/cores" || true
           for c in "$RUNNER_TEMP"/cores/core.*; do
             [ -f "$c" ] || continue
-            gdb -batch -ex "bt 40" -ex "info sharedlibrary" build/linux/x64/debug/bundle/thelxis "$c" 2>&1 | tail -n 120
+            gdb -batch -ex "info signal" -ex "bt 30" build/linux/x64/debug/bundle/thelxis "$c" 2>&1 | grep -E "^(Program terminated|#[0-9]+)" | cut -c1-220
           done
 
       - name: Upload logs
