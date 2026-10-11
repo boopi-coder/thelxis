@@ -42,6 +42,7 @@ Thelxis — удалённый рабочий стол «компьютер — 
 - `.deb` (Debian, Ubuntu и производные): `sudo apt install ./thelxis_{{VERSION}}_amd64.deb`, затем запустите
   «Thelxis» из меню приложений или командой `thelxis`.
 - `.tar.gz`: распакуйте и запустите `./thelxis`. Нужны GTK 3 и библиотеки X11 (`libxtst6`, `libxrandr2`).
+- Нужен звуковой сервер (PulseAudio или PipeWire — есть в любом обычном рабочем столе); пакет .deb подтянет его сам.
 - Управление (ввод мыши и клавиатуры) работает в сеансе **X11**. В Wayland экран показать можно, но ввод пока не
   поддерживается.
 - Значок в трее: в GNOME нужно расширение AppIndicator (в Ubuntu включено по умолчанию).
@@ -111,6 +112,7 @@ These builds are not signed with a developer certificate, so your OS warns you o
 - `.deb` (Debian, Ubuntu and derivatives): `sudo apt install ./thelxis_{{VERSION}}_amd64.deb`, then start
   "Thelxis" from the app menu or run `thelxis`.
 - `.tar.gz`: extract and run `./thelxis`. Needs GTK 3 and the X11 libraries (`libxtst6`, `libxrandr2`).
+- A sound server is required (PulseAudio or PipeWire — present on any regular desktop); the .deb pulls it in.
 - Remote control (mouse and keyboard input) works in an **X11** session. On Wayland the screen can be shared but
   input is not supported yet.
 - Tray icon: GNOME needs the AppIndicator extension (enabled by default on Ubuntu).

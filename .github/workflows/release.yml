@@ -60,9 +60,14 @@ jobs:
       release: true
     secrets: inherit
 
+  e2e:
+    name: End-to-end
+    needs: prepare
+    uses: ./.github/workflows/e2e.yml
+
   publish:
     name: Publish GitHub Release
-    needs: [prepare, build]
+    needs: [prepare, build, e2e]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
