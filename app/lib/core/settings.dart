@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../net/connectivity/connectivity.dart' show ManualForwarding, ThelxisPorts;
 import '../protocol/models.dart';
 import 'base64url.dart';
 
@@ -18,7 +19,15 @@ class AppSettings extends ChangeNotifier {
   static const _kAllowIncoming = 'allow_incoming';
   static const _kUpnp = 'upnp';
   static const _kLan = 'lan_discovery';
-  static const _kPublicStun = 'public_stun';
+  // 0.1.0 stored the opt-in under 'public_stun' (default off). The default is
+  // now ON, so existing installs must not inherit the old explicit value: the
+  // setting lives under a new key and the old one is ignored.
+  static const _kPublicStun = 'public_stun_v2';
+  static const _kManualFwd = 'manual_fwd';
+  static const _kManualHost = 'manual_fwd_host';
+  static const _kManualSignaling = 'manual_fwd_tcp';
+  static const _kManualTurnUdp = 'manual_fwd_udp';
+  static const _kManualTurnTcp = 'manual_fwd_turn_tcp';
   static const _kRequireApproval = 'require_approval';
   static const _kRotateOtp = 'rotate_otp';
   static const _kUnattendedKey = 'unattended_key';
@@ -44,8 +53,31 @@ class AppSettings extends ChangeNotifier {
 
   bool get lanDiscovery => _prefs.getBool(_kLan) ?? true;
 
-  /// Opt-in: add a public STUN server to ICE (reveals IPs to that server).
-  bool get publicStun => _prefs.getBool(_kPublicStun) ?? false;
+  /// Add public STUN servers to ICE (PROTOCOL.md section 4.3). On by default:
+  /// the servers learn the devices' IP:port, never any session data.
+  bool get publicStun => _prefs.getBool(_kPublicStun) ?? true;
+
+  /// The user forwarded ports on the router by hand (Settings -> Connectivity).
+  bool get manualForwardingEnabled => _prefs.getBool(_kManualFwd) ?? false;
+
+  /// Public IP or DNS name of the router for manual forwarding; empty = use
+  /// the router's address when known.
+  String get manualForwardHost => (_prefs.getString(_kManualHost) ?? '').trim();
+
+  /// Router ports forwarded to this device's 47100/TCP, 47100/UDP, 47101/TCP.
+  int get manualSignalingPort => _prefs.getInt(_kManualSignaling) ?? ThelxisPorts.signalingTcp;
+  int get manualTurnUdpPort => _prefs.getInt(_kManualTurnUdp) ?? ThelxisPorts.turnUdp;
+  int get manualTurnTcpPort => _prefs.getInt(_kManualTurnTcp) ?? ThelxisPorts.turnTcp;
+
+  /// What to hand to `Connectivity.setManualForwarding`; null when off.
+  ManualForwarding? get manualForwarding => !manualForwardingEnabled
+      ? null
+      : ManualForwarding(
+          externalHost: manualForwardHost.isEmpty ? null : manualForwardHost,
+          signalingTcp: manualSignalingPort,
+          turnUdp: manualTurnUdpPort,
+          turnTcp: manualTurnTcpPort,
+        );
 
   bool get requireApproval => _prefs.getBool(_kRequireApproval) ?? false;
 
@@ -101,6 +133,40 @@ class AppSettings extends ChangeNotifier {
   Future<void> setUpnp(bool v) => _set(() => _prefs.setBool(_kUpnp, v));
   Future<void> setLanDiscovery(bool v) => _set(() => _prefs.setBool(_kLan, v));
   Future<void> setPublicStun(bool v) => _set(() => _prefs.setBool(_kPublicStun, v));
+  Future<void> setManualForwardingEnabled(bool v) => _set(() => _prefs.setBool(_kManualFwd, v));
+
+  /// Stores the manual forwarding details. Ports outside 1..65535 and hosts
+  /// that are not an IP address or a DNS name are ignored (the old value stays).
+  Future<void> setManualForwardingDetails({String? host, int? signalingTcp, int? turnUdp, int? turnTcp}) =>
+      _set(() async {
+        if (host != null) {
+          final h = host.trim();
+          if (h.isEmpty) {
+            await _prefs.remove(_kManualHost);
+          } else if (isValidForwardHost(h)) {
+            await _prefs.setString(_kManualHost, h);
+          }
+        }
+        if (isValidPort(signalingTcp)) await _prefs.setInt(_kManualSignaling, signalingTcp!);
+        if (isValidPort(turnUdp)) await _prefs.setInt(_kManualTurnUdp, turnUdp!);
+        if (isValidPort(turnTcp)) await _prefs.setInt(_kManualTurnTcp, turnTcp!);
+        return true;
+      });
+
+  static bool isValidPort(int? p) => p != null && p >= 1 && p <= 65535;
+
+  /// An IPv4/IPv6 literal or a DNS name (letters, digits, dots, hyphens).
+  static bool isValidForwardHost(String h) {
+    if (h.isEmpty || h.length > 253) return false;
+    if (RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(h)) {
+      return h.split('.').every((o) => int.parse(o) <= 255);
+    }
+    if (h.contains(':')) {
+      return RegExp(r'^[0-9A-Fa-f:.]+$').hasMatch(h) && ':'.allMatches(h).length >= 2;
+    }
+    return RegExp(r'^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$').hasMatch(h);
+  }
+
   Future<void> setRequireApproval(bool v) => _set(() => _prefs.setBool(_kRequireApproval, v));
   Future<void> setRotateOneTimePassword(bool v) => _set(() => _prefs.setBool(_kRotateOtp, v));
   Future<void> setLaunchAtStartup(bool v) => _set(() => _prefs.setBool(_kStartup, v));

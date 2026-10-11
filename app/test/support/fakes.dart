@@ -20,7 +20,13 @@ class FakeConnectivity implements Connectivity {
   bool listening = false;
   bool started = false;
   bool? lastPortMapping;
+  ManualForwarding? manualForwarding;
+  final List<ManualForwarding?> manualHistory = [];
+  final List<bool> gatewayGrants = [];
   int _n = 0;
+
+  /// Publishes a connectivity snapshot (tests drive the reachability UI).
+  void publish(ReachabilityReport r) => _report.value = r;
 
   @override
   Future<void> start({required bool portMapping}) async {
@@ -40,6 +46,12 @@ class FakeConnectivity implements Connectivity {
   ValueListenable<ReachabilityReport> get report => _report;
 
   @override
+  void setManualForwarding(ManualForwarding? forwarding) {
+    manualForwarding = forwarding;
+    manualHistory.add(forwarding);
+  }
+
+  @override
   void setListening(bool value) {
     listening = value;
   }
@@ -48,7 +60,12 @@ class FakeConnectivity implements Connectivity {
   List<String> advertisedAddresses() => addresses;
 
   @override
-  TurnGrant? issueTurnGrant({String? dialedAddress, Duration ttl = const Duration(hours: 12)}) {
+  TurnGrant? issueTurnGrant({
+    String? dialedAddress,
+    Duration ttl = const Duration(hours: 12),
+    bool gateway = false,
+  }) {
+    gatewayGrants.add(gateway);
     final g = TurnGrant(
       username: 'user${_n++}',
       credential: 'cred',

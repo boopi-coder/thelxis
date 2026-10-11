@@ -166,6 +166,7 @@ class SessionManager extends ChangeNotifier {
   BadgeState? _lastBadge;
   Future<void> _applying = Future.value();
   bool? _lastUpnp;
+  String? _lastManualKey;
   bool _started = false;
   bool _disposed = false;
 
@@ -262,9 +263,24 @@ class SessionManager extends ChangeNotifier {
     return p is AndroidHostPlatform ? p : null;
   }
 
+  /// Hands the hand-made router forwarding (Settings -> Connectivity) to the
+  /// connectivity module, before it starts and again on every change.
+  void _applyManualForwarding() {
+    final f = settings.manualForwarding;
+    final key = f == null ? '' : '${f.externalHost}|${f.signalingTcp}|${f.turnUdp}|${f.turnTcp}';
+    if (key == _lastManualKey) return;
+    _lastManualKey = key;
+    try {
+      connectivity.setManualForwarding(f);
+    } on Object catch (e) {
+      _log.w('applying manual forwarding failed', e);
+    }
+  }
+
   Future<void> _apply() async {
     if (_disposed) return;
     final android = _android;
+    _applyManualForwarding();
     if (settings.allowIncoming) {
       if (!listener.isListening) {
         await listener.start(port: listenerPort, address: listenerAddress);

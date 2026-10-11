@@ -84,7 +84,7 @@ void main() {
     expect(find.text('TRUSTED DEVICES'), findsOneWidget);
     expect(find.text('No trusted devices'), findsOneWidget);
     expect(find.text('CONNECTIVITY'), findsOneWidget);
-    expect(find.text('Use a public STUN server'), findsOneWidget);
+    expect(find.text('Use public STUN servers'), findsOneWidget);
 
     await tester.tap(find.text('Home'));
     await tester.pump(const Duration(milliseconds: 300));

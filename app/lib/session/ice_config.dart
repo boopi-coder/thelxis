@@ -1,15 +1,15 @@
+import '../net/connectivity/connectivity.dart' show PublicStun;
 import '../net/net_address.dart';
 import '../net/signaling_channel.dart';
 import '../protocol/signaling_messages.dart';
-
-const String kPublicStunUrl = 'stun:stun.l.google.com:19302';
 
 /// Builds the `RTCPeerConnection` configuration per PROTOCOL.md section 4.3.
 ///
 /// * The dialer uses the listener's embedded STUN/TURN, addressed through the
 ///   host it actually connected to ([turnHost]).
 /// * The listener uses no ICE servers.
-/// * A public STUN server is added only when the user opted in.
+/// * The public STUN servers ([PublicStun.urls]) are added for both roles
+///   unless the user switched the setting off.
 /// * [relayOnly] restricts ICE to relayed candidates, i.e. forces the media
 ///   through the listener's embedded TURN (diagnostics and tests).
 Map<String, dynamic> buildRtcConfiguration({
@@ -36,7 +36,7 @@ Map<String, dynamic> buildRtcConfiguration({
   }
   if (publicStun) {
     servers.add({
-      'urls': [kPublicStunUrl],
+      'urls': PublicStun.urls,
     });
   }
   return {

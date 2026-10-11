@@ -181,12 +181,15 @@ void main() {
       expect(c['iceServers'], isEmpty);
     });
 
-    test('public STUN only when the user opted in', () {
+    test('public STUN (both servers) is added for both roles unless switched off', () {
       expect(buildRtcConfiguration(role: SignalingRole.listener)['iceServers'], isEmpty);
       final on = buildRtcConfiguration(role: SignalingRole.listener, publicStun: true)['iceServers'] as List;
-      expect(on.single['urls'], ['stun:stun.l.google.com:19302']);
+      expect(on.single['urls'], PublicStun.urls);
+      expect(PublicStun.urls, ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478']);
       final both = buildRtcConfiguration(role: SignalingRole.dialer, turn: turn, turnHost: NetAddress('1.2.3.4', 1), publicStun: true)['iceServers'] as List;
       expect(both, hasLength(3));
+      expect(both.last['urls'], PublicStun.urls);
+      expect(buildRtcConfiguration(role: SignalingRole.dialer, turn: turn, turnHost: NetAddress('1.2.3.4', 1))['iceServers'], hasLength(2));
     });
 
     test('no TURN grant means no relay servers', () {

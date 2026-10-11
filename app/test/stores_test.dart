@@ -124,7 +124,9 @@ void main() {
       expect(s.deviceName, 'My Mac');
       expect(s.allowIncoming, isTrue);
       expect(s.upnp, isTrue);
-      expect(s.publicStun, isFalse, reason: 'public STUN is opt-in');
+      expect(s.publicStun, isTrue, reason: 'public STUN is on by default since 0.1.1');
+      expect(s.manualForwardingEnabled, isFalse);
+      expect(s.manualForwarding, isNull);
       expect(s.requireApproval, isFalse);
       expect(s.lanDiscovery, isTrue);
       expect(s.themeMode, ThemeMode.dark);
@@ -132,19 +134,61 @@ void main() {
       expect(s.defaultPermissions, const Permissions());
     });
 
+    test('public STUN is on for existing installs: the 0.1.0 key is ignored', () async {
+      SharedPreferences.setMockInitialValues({'public_stun': false});
+      final old = await SharedPreferences.getInstance();
+      final s = AppSettings(old, defaultDeviceName: 'x');
+      expect(s.publicStun, isTrue);
+      await s.setPublicStun(false);
+      expect(AppSettings(old, defaultDeviceName: 'x').publicStun, isFalse, reason: 'the new choice persists');
+      expect(old.getBool('public_stun_v2'), isFalse);
+    });
+
+    test('manual forwarding: defaults, persistence, and validation', () async {
+      final s = AppSettings(prefs, defaultDeviceName: 'x');
+      expect((s.manualSignalingPort, s.manualTurnUdpPort, s.manualTurnTcpPort), (47100, 47100, 47101));
+      expect(s.manualForwarding, isNull);
+
+      await s.setManualForwardingEnabled(true);
+      await s.setManualForwardingDetails(host: ' home.example.org ', signalingTcp: 50000, turnUdp: 50001, turnTcp: 50002);
+      var f = AppSettings(prefs, defaultDeviceName: 'x').manualForwarding!;
+      expect((f.externalHost, f.signalingTcp, f.turnUdp, f.turnTcp), ('home.example.org', 50000, 50001, 50002));
+
+      // Invalid input leaves the previous values alone.
+      await s.setManualForwardingDetails(host: 'bad host!', signalingTcp: 0, turnUdp: 70000, turnTcp: -1);
+      f = s.manualForwarding!;
+      expect((f.externalHost, f.signalingTcp, f.turnUdp, f.turnTcp), ('home.example.org', 50000, 50001, 50002));
+
+      // An empty host means "use the router's address".
+      await s.setManualForwardingDetails(host: '');
+      expect(s.manualForwarding!.externalHost, isNull);
+      await s.setManualForwardingEnabled(false);
+      expect(s.manualForwarding, isNull);
+    });
+
+    test('forward host validation accepts IPs and DNS names only', () {
+      for (final ok in ['203.0.113.7', 'example.org', 'my-router.dyndns.org', '2001:db8::1', 'a']) {
+        expect(AppSettings.isValidForwardHost(ok), isTrue, reason: ok);
+      }
+      for (final bad in ['', '999.1.1.1', 'bad host', 'a..b', '-x.org', 'x.org:80', 'http://x.org', 'a_b.org']) {
+        expect(AppSettings.isValidForwardHost(bad), isFalse, reason: bad);
+      }
+      expect([0, 1, 65535, 65536, null].map(AppSettings.isValidPort), [false, true, true, false, false]);
+    });
+
     test('values persist and notify', () async {
       final s = AppSettings(prefs, defaultDeviceName: 'x');
       var notified = 0;
       s.addListener(() => notified++);
       await s.setDeviceName('  Office  ');
-      await s.setPublicStun(true);
+      await s.setPublicStun(false);
       await s.setThemeMode(ThemeMode.light);
       await s.setDefaultPermissions(const Permissions(control: false));
       await s.setUnattendedKey([1, 2, 3, 4]);
       expect(notified, 5);
       final again = AppSettings(prefs, defaultDeviceName: 'x');
       expect(again.deviceName, 'Office');
-      expect(again.publicStun, isTrue);
+      expect(again.publicStun, isFalse);
       expect(again.themeMode, ThemeMode.light);
       expect(again.defaultPermissions.control, isFalse);
       expect(again.unattendedKey, [1, 2, 3, 4]);

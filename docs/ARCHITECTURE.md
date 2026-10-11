@@ -26,9 +26,14 @@ accounts, no relay operated by anyone. Two devices connect directly; encryption 
 |---|---|---|
 | 1 | Same LAN / VPN (Tailscale, ZeroTier, WireGuard) | UDP discovery, direct host candidates |
 | 2 | Both have IPv6 | direct IPv6, both sides send ICE checks (stateful firewalls open) |
-| 3 | Host reachable: public IP, UPnP/NAT-PMP/PCP auto-mapping, or manual forward of 47100/tcp+udp, 47101/tcp | viewer dials host; host's **embedded STUN/TURN** lets the viewer through any NAT; media stays E2E |
-| 4 | Only the viewer is reachable | **reverse connection**: the controlled side dials out (`want: be_controlled`), using the viewer's embedded TURN |
-| 5 | Both behind carrier-grade NAT, no IPv6 | not possible without a third party → optional "Public STUN" toggle (off by default; reveals only IPs to the STUN server) or a VPN overlay |
+| 3 | Host reachable: public IP, UPnP/NAT-PMP/PCP auto-mapping (safe with several PCs behind one IP), or manual forward of 47100/tcp+udp, 47101/tcp (custom external ports / DDNS name supported) | viewer dials host; host's **embedded STUN/TURN** lets the viewer through any NAT; media stays E2E |
+| 4 | Several office PCs behind one IP, one of them reachable | **office gateway** (§11): the reachable PC pipes signaling and relays ciphertext to the others; E2E stays viewer ↔ target |
+| 5 | Only the viewer is reachable | **reverse connection**: the controlled side dials out (`want: be_controlled`), using the viewer's embedded TURN |
+| 6 | Nobody reachable (grey IPs, CGNAT on both sides) | **connect by code** (§12): two short texts exchanged by the users over any messenger + public STUN hole punching |
+| 7 | Symmetric NATs on both sides, no IPv6 | not possible without a relay → VPN overlay |
+
+Public STUN (Google + Cloudflare) is **on by default** since 0.1.1 (owner's decision; it reveals only IP:port,
+never session data) and can be turned off.
 
 The embedded TURN only relays to the listener's own machine (never an open relay); it carries
 already-encrypted DTLS packets, so even this hop on the device itself sees only ciphertext until libwebrtc.

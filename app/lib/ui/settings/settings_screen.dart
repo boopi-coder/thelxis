@@ -1,3 +1,4 @@
+import 'manual_forwarding_section.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -138,6 +139,7 @@ class SettingsScreen extends StatelessWidget {
                 value: st.publicStun,
                 onChanged: st.setPublicStun,
               ),
+              const ManualForwardingSection(),
               ListTile(
                 leading: const Icon(Icons.network_check_rounded),
                 title: Text(s.t('settings.diagnostics')),

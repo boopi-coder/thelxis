@@ -101,7 +101,7 @@ void main() {
   });
 
   testWidgets('switching the language in Settings updates the whole UI immediately', (tester) async {
-    tester.view.physicalSize = const Size(1200, 1600);
+    tester.view.physicalSize = const Size(1200, 2600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final services = await _services();

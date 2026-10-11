@@ -5,7 +5,9 @@ import '../../core/settings.dart';
 import '../../net/connectivity/connectivity.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
-import 'reachability.dart';
+import '../shell_controller.dart';
+import 'reachability_advice.dart';
+import 'reachability_card.dart';
 import '../../l10n/strings.dart';
 
 /// Connectivity diagnostics: LAN IPs, IPv6, router / UPnP status, external IP,
@@ -32,23 +34,18 @@ class DiagnosticsScreen extends StatelessWidget {
       body: ValueListenableBuilder<ReachabilityReport>(
         valueListenable: connectivity.report,
         builder: (context, r, _) {
-          final summary = summarizeReachability(allowIncoming: settings.allowIncoming, report: r, strings: s);
+          final advice = adviseReachability(
+            allowIncoming: settings.allowIncoming,
+            report: r,
+            upnpEnabled: settings.upnp,
+          );
           String yesNo(bool v) => v ? s.t('common.yes') : s.t('common.no');
           return PageScroll(
             maxWidth: 720,
             children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(Gap.l),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      StatusPill(label: summary.label, tone: summary.tone),
-                      const SizedBox(height: Gap.m),
-                      Text(summary.detail),
-                    ],
-                  ),
-                ),
+              ReachabilityAdviceCard(
+                advice: advice,
+                onAction: (action) => _act(context, action),
               ),
               SectionHeader(s.t('diag.section.device')),
               Card(
@@ -79,6 +76,7 @@ class DiagnosticsScreen extends StatelessWidget {
                     _row(s.t('diag.externalIp'), r.externalIPv4 ?? s.t('common.unknown')),
                     _row(s.t('diag.publicAddress'), yesNo(r.externalIsPublic), ok: r.externalIsPublic),
                     if (r.externalIsDirect) _row(s.t('diag.directAddress'), s.t('diag.directAddress.yes'), ok: true),
+                    if (r.manualForwarding) _row(s.t('diag.manual'), s.t('diag.manual.on'), ok: true),
                     if (r.cgnat) _row(s.t('diag.cgnat'), s.t('diag.detected'), ok: false),
                     _row(
                       s.t('diag.mappings'),
@@ -122,6 +120,27 @@ class DiagnosticsScreen extends StatelessWidget {
     );
   }
 
+  /// Buttons of the advice card. Navigation actions leave the diagnostics so
+  /// the user lands where the change is made.
+  void _act(BuildContext context, AdviceAction action) {
+    final settings = context.read<AppSettings>();
+    final shell = context.read<ShellController>();
+    switch (action) {
+      case AdviceAction.enableIncoming:
+        settings.setAllowIncoming(true);
+      case AdviceAction.enableMapping:
+        settings.setUpnp(true);
+      case AdviceAction.rescan:
+        context.read<Connectivity>().refresh();
+      case AdviceAction.manualForwarding:
+        Navigator.of(context).pop();
+        shell.goTo(ShellController.pageSettings);
+      case AdviceAction.reverseConnection:
+        Navigator.of(context).pop();
+        shell.goTo(ShellController.pageHome);
+    }
+  }
+
   static String _method(S s, MappingMethod? m) => switch (m) {
         MappingMethod.upnp => 'UPnP',
         MappingMethod.natPmp => 'NAT-PMP',
@@ -129,28 +148,29 @@ class DiagnosticsScreen extends StatelessWidget {
         null => s.t('common.unknown'),
       };
 
+  /// Label on the left, value on the right; both wrap, so nothing overflows on
+  /// narrow phones (a ListTile trailing widget does not shrink).
   Widget _row(String label, String value, {bool? ok}) {
     return Builder(builder: (context) {
       final st = context.status;
-      return ListTile(
-        title: Text(label),
-        trailing: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 260),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (ok != null)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Icon(
-                    ok ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                    size: 18,
-                    color: ok ? st.good : st.warn,
-                  ),
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Gap.l, vertical: Gap.m),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: 5, child: Text(label)),
+            const SizedBox(width: Gap.m),
+            if (ok != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 8, top: 1),
+                child: Icon(
+                  ok ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                  size: 18,
+                  color: ok ? st.good : st.warn,
                 ),
-              Flexible(child: Text(value, textAlign: TextAlign.end)),
-            ],
-          ),
+              ),
+            Flexible(flex: 6, child: Text(value, textAlign: TextAlign.end)),
+          ],
         ),
       );
     });

@@ -95,8 +95,16 @@ class _DeviceCardState extends State<DeviceCard> {
                   ReachabilityPill(
                     connectivity: connectivity,
                     allowIncoming: settings.allowIncoming,
+                    upnpEnabled: settings.upnp,
                     onWhy: widget.onShowDiagnostics,
                     onGradient: true,
+                  ),
+                  ReachabilityHint(
+                    connectivity: connectivity,
+                    allowIncoming: settings.allowIncoming,
+                    upnpEnabled: settings.upnp,
+                    onTap: widget.onShowDiagnostics,
+                    color: brand.onHeroMuted,
                   ),
                   SizedBox(height: compact ? Gap.xl : Gap.xxl),
                   Text(

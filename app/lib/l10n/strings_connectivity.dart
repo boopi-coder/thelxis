@@ -78,23 +78,136 @@ final Map<String, (String, String)> kConnectivityStrings = {
     'Входящие подключения отключены. Никто не сможет подключиться к этому устройству.',
   ),
   'reach.noListener': ('Listener unavailable', 'Приём подключений недоступен'),
-  'reach.noListener.detail': (
-    'The signaling port could not be opened. Another program may be using port 47100.',
-    'Не удалось открыть порт сигнализации. Возможно, порт 47100 занят другой программой.',
-  ),
   'reach.internet': ('Reachable from internet', 'Доступно из интернета'),
-  'reach.internet.detail': (
-    'Devices on the internet can connect directly to this one.',
-    'Устройства из интернета могут подключаться напрямую.',
-  ),
   'reach.lan': ('LAN only', 'Только в локальной сети'),
-  'reach.lan.detail': (
-    'Devices on your network can connect. For internet access, enable UPnP or forward ports 47100 (TCP and UDP) and 47101 (TCP) on your router.',
-    'Подключаться могут устройства вашей сети. Для доступа из интернета включите UPnP или пробросьте на роутере порты 47100 (TCP и UDP) и 47101 (TCP).',
+
+  // Advice per situation: title, one friendly sentence, steps (one per line),
+  // and a one-line hint for Home.
+  'reach.steps.title': ('What you can do', 'Что можно сделать'),
+  'reach.action.enableIncoming': ('Accept incoming connections', 'Принимать подключения'),
+  'reach.action.enableMapping': ('Turn on automatic port mapping', 'Включить автоматический проброс'),
+  'reach.action.manualForwarding': ('Set up manual forwarding', 'Настроить ручной проброс'),
+
+  'reach.off.title': ('Incoming connections are off', 'Входящие подключения отключены'),
+  'reach.off.body': (
+    'Nobody can connect to this device while this is off.',
+    'Пока это выключено, никто не сможет подключиться к этому устройству.',
   ),
-  'reach.cgnat.detail': (
-    'Your provider shares one public address between customers (CGNAT), so inbound IPv4 is not possible. IPv6, a VPN, or a reverse connection can still work.',
-    'Провайдер выдаёт один публичный адрес многим клиентам (CGNAT), поэтому входящий IPv4 невозможен. Могут помочь IPv6, VPN или обратное подключение.',
+
+  'reach.portInUse.title': ('Can\'t listen on port 47100', 'Не удаётся открыть порт 47100'),
+  'reach.portInUse.body': (
+    'Another program is using the port, or a firewall is blocking Thelxis.',
+    'Порт занят другой программой, либо Thelxis блокирует брандмауэр.',
+  ),
+  'reach.portInUse.steps': (
+    'Close the other program that uses port 47100 (maybe a second Thelxis) and press Re-scan.\nIf the firewall asks, allow Thelxis.',
+    'Закройте другую программу, занимающую порт 47100 (возможно, вторую копию Thelxis), и нажмите «Проверить заново».\nЕсли брандмауэр спросит, разрешите Thelxis.',
+  ),
+  'reach.portInUse.hint': (
+    'Port 47100 is busy. Tap to see what to do.',
+    'Порт 47100 занят. Нажмите, чтобы узнать, что делать.',
+  ),
+
+  'reach.direct.title': ('Reachable from the internet', 'Доступно из интернета'),
+  'reach.direct.body': (
+    'This device has a public address of its own. Nothing to set up.',
+    'У этого устройства собственный публичный адрес. Ничего настраивать не нужно.',
+  ),
+
+  'reach.mapped.title': ('Reachable via your router ({method})', 'Доступно через роутер ({method})'),
+  'reach.mapped.body': (
+    'Your router opened the ports automatically. Nothing to set up.',
+    'Роутер сам открыл порты. Ничего настраивать не нужно.',
+  ),
+
+  'reach.manual.title': ('Reachable via your manual forwarding', 'Доступно через ваш ручной проброс'),
+  'reach.manual.body': (
+    'Thelxis cannot check a manual forward from inside your network.',
+    'Thelxis не может проверить ручной проброс изнутри вашей сети.',
+  ),
+  'reach.manual.steps': (
+    'To test, connect to this device from a phone on mobile data.',
+    'Для проверки подключитесь к этому устройству с телефона через мобильный интернет.',
+  ),
+
+  'reach.ipv6.title': ('Reachable over IPv6', 'Доступно по IPv6'),
+  'reach.ipv6.body': (
+    'People whose network has IPv6 can connect directly.',
+    'Подключиться напрямую смогут те, у кого в сети есть IPv6.',
+  ),
+  'reach.ipv6.steps': (
+    'For people without IPv6, turn on UPnP on the router or forward the ports by hand.',
+    'Для тех, у кого нет IPv6, включите UPnP на роутере или пробросьте порты вручную.',
+  ),
+
+  'reach.cgnat.title': ('Your provider blocks incoming connections', 'Провайдер блокирует входящие подключения'),
+  'reach.cgnat.body': (
+    'Your provider shares one public address between many customers (CGNAT), so nobody can reach this device from the internet over IPv4.',
+    'Провайдер выдаёт один публичный адрес многим клиентам (CGNAT), поэтому из интернета по IPv4 до этого устройства не достучаться.',
+  ),
+  'reach.cgnat.steps': (
+    'Connect by code (coming in version 0.2): no router setup, works through CGNAT.\nUse "Let them control this device": the connection goes out from you instead.\nOr ask the provider for a public IP, or use IPv6 or a VPN.',
+    'Подключение по коду (появится в версии 0.2): без настройки роутера, работает через CGNAT.\nИспользуйте «Дать им управлять этим устройством»: подключение пойдёт от вас.\nИли попросите у провайдера публичный IP, либо используйте IPv6 или VPN.',
+  ),
+  'reach.cgnat.hint': (
+    'Your provider blocks incoming (CGNAT). Tap for options.',
+    'Провайдер блокирует входящие (CGNAT). Нажмите, чтобы увидеть варианты.',
+  ),
+
+  'reach.doubleNat.title': ('Two routers in a row', 'Два роутера подряд'),
+  'reach.doubleNat.body': (
+    'Another router sits between your router and the internet (double NAT), so the ports your router opens lead nowhere.',
+    'Между вашим роутером и интернетом стоит ещё один роутер (двойной NAT), поэтому открытые порты никуда не ведут.',
+  ),
+  'reach.doubleNat.steps': (
+    'Switch the first router or modem to bridge mode.\nOr forward the ports on both routers.\nOr use "Let them control this device": the connection goes out from you.',
+    'Переведите первый роутер или модем в режим моста.\nЛибо пробросьте порты на обоих роутерах.\nЛибо используйте «Дать им управлять этим устройством»: подключение пойдёт от вас.',
+  ),
+  'reach.doubleNat.hint': (
+    'Two routers in a row (double NAT). Tap for options.',
+    'Два роутера подряд (двойной NAT). Нажмите, чтобы увидеть варианты.',
+  ),
+
+  'reach.mappingFailed.title': ('Your router did not open the ports', 'Роутер не открыл порты'),
+  'reach.mappingFailed.body': (
+    'The router answered, but it refused to forward the ports automatically.',
+    'Роутер ответил, но отказался пробросить порты автоматически.',
+  ),
+  'reach.mappingFailed.steps': (
+    'Forward the ports by hand (manual forwarding in Settings).\nOr check that UPnP is on in the router, restart it and press Re-scan.',
+    'Пробросьте порты вручную (ручной проброс в настройках).\nИли убедитесь, что UPnP включён на роутере, перезагрузите его и нажмите «Проверить заново».',
+  ),
+  'reach.mappingFailed.hint': (
+    'The router did not open the ports. Tap to fix.',
+    'Роутер не открыл порты. Нажмите, чтобы исправить.',
+  ),
+
+  'reach.mappingOff.title': ('Automatic port mapping is off', 'Автоматический проброс отключён'),
+  'reach.mappingOff.body': (
+    'Without it, only devices in your own network can connect.',
+    'Без него подключаться смогут только устройства вашей сети.',
+  ),
+  'reach.mappingOff.steps': (
+    'Turn on automatic port mapping.\nOr forward the ports by hand (manual forwarding in Settings).',
+    'Включите автоматический проброс портов.\nИли пробросьте порты вручную (ручной проброс в настройках).',
+  ),
+  'reach.mappingOff.hint': (
+    'Automatic port mapping is off. Tap to turn it on.',
+    'Автоматический проброс отключён. Нажмите, чтобы включить.',
+  ),
+
+  'reach.noRouter.title': ('Reachable only inside your network', 'Доступно только в вашей сети'),
+  'reach.noRouter.body': (
+    'No router that can open ports by itself was found, so only devices on the same network (or VPN) can connect.',
+    'Роутер, который сам открывает порты, не найден, поэтому подключаться смогут только устройства из той же сети (или VPN).',
+  ),
+  'reach.noRouter.steps': (
+    'Enable UPnP on the router, then press Re-scan.\nOr forward the ports by hand (manual forwarding in Settings).\nOr use "Let them control this device": the connection goes out from you.',
+    'Включите UPnP на роутере и нажмите «Проверить заново».\nИли пробросьте порты вручную (ручной проброс в настройках).\nИли используйте «Дать им управлять этим устройством»: подключение пойдёт от вас.',
+  ),
+  'reach.noRouter.hint': (
+    'Only reachable inside your network. Tap to see how to fix it.',
+    'Доступно только в вашей сети. Нажмите, чтобы узнать, как исправить.',
   ),
 
   // --- diagnostics ---
@@ -119,6 +232,8 @@ final Map<String, (String, String)> kConnectivityStrings = {
   'diag.directAddress.yes': ('Yes — no router mapping needed', 'Да — проброс на роутере не нужен'),
   'diag.cgnat': ('Carrier-grade NAT', 'NAT оператора (CGNAT)'),
   'diag.detected': ('Detected', 'Обнаружен'),
+  'diag.manual': ('Manual forwarding', 'Ручной проброс'),
+  'diag.manual.on': ('Set (cannot be verified from inside)', 'Задан (изнутри не проверить)'),
   'diag.mappings': ('Port mappings', 'Проброшенные порты'),
   'diag.how': (
     'Thelxis has no server. A device is reachable when it has a public IPv6 address, a router mapping (UPnP / NAT-PMP), or a manual port forward of 47100 (TCP and UDP) and 47101 (TCP). If only the other side is reachable, use "Let them control this device" to connect in reverse.',

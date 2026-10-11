@@ -44,7 +44,9 @@ The TURN/STUN ports a peer must use are sent explicitly in §4.3, never assumed.
   - `ID@host[:port]` → connect and require that the peer's key matches the ID (mismatch = hard failure,
     "identity mismatch — possible interception").
   - `host[:port]` → trust-on-first-use: show the peer's ID and name and ask the user to confirm, then pin.
-  - an **invite link** `thelxis://connect?id=<ID>&n=<url-encoded name>&a=<addr>,<addr>,…`.
+  - an **invite link** `thelxis://connect?id=<ID>&n=<url-encoded name>&a=<addr>,<addr>,…[&g=<gateway addr>,…]`
+    (`g` = office gateways that can reach this device, §11).
+  - a **connection code** `TX1.…` (§12).
   - an address-book entry or a LAN-discovered device.
 - With multiple addresses the dialer tries them in parallel, staggered by 250 ms ("happy eyeballs");
   the first completed handshake with the expected ID wins, the rest are closed.
@@ -97,8 +99,10 @@ X→Y {"t":"ping"}  /  {"t":"pong"}          every 20 s; close after 60 s of sil
   `{"urls":["stun:<H>:<udp_port>"]}` and
   `{"urls":["turn:<H>:<udp_port>?transport=udp","turn:<H>:<tcp_port>?transport=tcp"],"username":…,"credential":…}`
   where `<H>` is the host/IP the dialer actually connected to (bracketed for IPv6).
-- **Listener** iceServers: none.
-- Either side MAY add a public STUN server **only if the user enabled** "Public STUN" (off by default).
+- **Listener** iceServers: none (plus public STUN, below).
+- **Public STUN** (setting, **on by default** since 0.1.1; the user can turn it off): both sides add
+  `stun:stun.l.google.com:19302` and `stun:stun.cloudflare.com:3478`. A STUN server only learns the devices' public
+  IP:port so their NATs can be punched; it never sees any session data.
 - `bundlePolicy: max-bundle`. No other servers ever.
 - The embedded TURN (listener side) MUST accept credentials only for live sessions (+60 s), and MUST only
   grant permissions/channels to peer addresses that are **local addresses of the listener's own machine**
@@ -209,7 +213,8 @@ X→Y {"t":"cancel","xid":7}
 ## 7. LAN discovery (UDP 47102)
 ```
 viewer → 255.255.255.255:47102 and each interface broadcast:  {"t":"discover","v":2}
-host   → unicast reply:  {"t":"here","v":2,"id":"K7M2P9XQ4TAB8HDE","key":"<b64url>","name":"Office PC","os":"windows","port":47100}
+host   → unicast reply:  {"t":"here","v":2,"id":"K7M2P9XQ4TAB8HDE","key":"<b64url>","name":"Office PC","os":"windows","port":47100,
+                          "gateway":true|absent,"gw_addresses":["203.0.113.5:47110"]|absent}
 ```
 Viewers re-broadcast every 5 s while the Devices screen is visible; entries expire after 15 s without a reply.
 
@@ -241,3 +246,46 @@ update.json.sig = base64url(Ed25519 signature over the exact bytes of update.jso
   `version` > current (semver; pre-releases ignored), download the asset for this platform/ABI/install type, verify
   size + SHA-256, install. Any mismatch → discard and report; never fall back to an unsigned path.
 - Never install while a session is active; defer until idle. Check 30 s after start and every 6 h.
+
+## 11. Office gateway (since 0.2)
+One reachable device (gateway **G**, setting "Office gateway", off by default) gives outside viewers a way to every
+Thelxis device in its LAN (targets **T**) through **one** forwarded port. G is a blind pipe: the viewer **V** still
+performs the §4.1 handshake *with T* and the media is DTLS-encrypted end-to-end between V and T.
+
+- No extra opt-in on T: a connection through G is equivalent to a LAN connection, and T authorizes V itself (§6.1).
+- V dials `ws://<G address>/thelxis/via/<T ID without dashes>` (hello as usual, `dialed` = the G address).
+- G looks T up in its LAN discovery table (entries ≤ 15 s old; otherwise re-discovers for up to 2 s). Not found →
+  `{"t":"error","code":"not_found"}` and close. Else G opens `ws://<T LAN address>:<port>/thelxis` and **pipes frames
+  unchanged in both directions**, with one exception: in a frame from T with `t == "session"`, G replaces `turn` with
+  its own **gateway grant** (`issueTurnGrant(dialedAddress: V.dialed, gateway: true)`), because T's TURN is not
+  reachable from outside. V builds TURN URLs from the G address it dialed, as in §4.3.
+- A gateway grant may create permissions/channels for G's own addresses **and** private (RFC 1918) addresses inside
+  G's directly connected IPv4 subnets — nothing else.
+- V MUST verify T's ID (no trust-on-first-use through a gateway unless the user explicitly confirms the ID).
+- Limits on G: §8 rules, at most 16 concurrent pipes, a pipe closes when either side closes. A dropped pipe is
+  resumed like any signaling drop (§4.2 `resume`) by dialing G again.
+- G advertises itself in discovery (`gateway`, `gw_addresses`). T adds those addresses as `g=` to its invites; dialers
+  race direct addresses first and gateway routes 500 ms later.
+
+## 12. Connect by code (since 0.2)
+For when neither side's signaling port is reachable (e.g. grey IPs on both sides): two short texts are exchanged by the
+users over any channel they choose; together with public STUN this punches both NATs (carrier-grade NATs keep
+endpoint-independent mappings per RFC 6888).
+```
+offer code  (host → viewer)  = "TX1." + base64url(deflate(utf8(JSON)))
+  {"v":1,"k":"<host key>","n":"<name>","os":"…","nonce":"<nH>","exp":<unix+600>,"sdp":"<offer, ICE gathering complete>",
+   "sig":"<Ed25519_H(\"thelxis-code-v1|offer|\" + nH + \"|\" + exp + \"|\" + sdp)>"}
+answer code (viewer → host) = "TX2." + base64url(deflate(utf8(JSON)))
+  {"v":1,"k":"<viewer key>","n":"<name>","os":"…","nonce":"<nV>","sdp":"<answer, ICE gathering complete>",
+   "sig":"<Ed25519_V(\"thelxis-code-v1|answer|\" + nH + \"|\" + nV + \"|\" + sdp)>"}
+```
+- The code creator is always the **host** (it offers control of itself). It builds the PeerConnection exactly as §5
+  (with public STUN), waits for ICE gathering to complete (max 5 s) and shows the code (text + QR). Codes are single-use,
+  expire after 10 minutes, and a host keeps at most 3 pending offers.
+- The viewer verifies the signature and shows the host's ID for confirmation (TOFU, or must match a known ID), answers,
+  and shows the answer code; the host verifies the answer signature and `nH`, then applies it.
+- Authorization afterwards is §6.1, unchanged.
+- **In-band signaling:** sessions created by code have no WebSocket, so later signaling (ICE-restart offers/answers,
+  candidates) travels on the `control` channel as `{"t":"rtc","data":{…§4.2 signal data…}}`, SDP signatures using
+  `"thelxis-sdp-v2|" + nH + "|" + nV + "|" + type + "|" + sdp`. Hosts accept `rtc` only from an authorized viewer or
+  for ICE restarts of the current session.

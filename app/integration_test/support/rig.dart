@@ -160,6 +160,7 @@ class E2ENode {
     final identity = await Identity.generate();
     final settings = AppSettings(prefs, defaultDeviceName: name);
     await settings.setUpnp(false);
+    await settings.setPublicStun(false); // offline, loopback-only scenarios
     await settings.setLanDiscovery(false);
     await settings.setAllowIncoming(listening);
 
