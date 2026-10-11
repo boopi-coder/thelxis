@@ -27,7 +27,7 @@
 
 #define MyAppName "Thelxis"
 #define MyAppPublisher "Thelxis"
-#define MyAppURL "https://github.com/sibawal/thelxis"
+#define MyAppURL "https://github.com/boopi-coder/thelxis"
 #define MyAppExeName "thelxis.exe"
 
 ; "x64compatible" (also allows Windows on ARM, which emulates x64) needs Inno Setup 6.3+.

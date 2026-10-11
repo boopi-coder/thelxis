@@ -13,10 +13,13 @@
 [![Android](https://img.shields.io/badge/Android-7%2B-3ddc84?logo=android&logoColor=white)](#скачать)
 [![Лицензия](https://img.shields.io/badge/лицензия-MIT-22c55e)](LICENSE)
 [![Автор](https://img.shields.io/badge/сделано-boopi.ru-7c3aed)](https://boopi.ru)
+[![Boosty](https://img.shields.io/badge/Boosty-boopi__coder-f15f2c?logo=boosty&logoColor=white)](https://boosty.to/boopi_coder)
 
 [English](README.md) | **Русский**
 
 <img src="docs/screenshots/home-ru.png" width="820" alt="Главный экран Thelxis">
+
+<a href="https://boosty.to/boopi_coder"><img src="docs/boosty-button.png" width="300" alt="Поддержать на Boosty"></a>
 
 </div>
 
@@ -95,7 +98,7 @@ TURN поверх TCP (для сетей, блокирующих UDP), `47102/ud
 
 ## Скачать
 
-Сборки для вашей системы - на странице **[Releases](https://github.com/sibawal/thelxis/releases/latest)**:
+Сборки для вашей системы - на странице **[Releases](https://github.com/boopi-coder/thelxis/releases/latest)**:
 
 | Система | Файл |
 |---|---|
@@ -160,7 +163,7 @@ TURN поверх TCP (для сетей, блокирующих UDP), `47102/ud
 JDK 17 и Android SDK для Android.
 
 ```bash
-git clone https://github.com/sibawal/thelxis.git
+git clone https://github.com/boopi-coder/thelxis.git
 cd thelxis/app
 flutter pub get
 flutter run -d macos          # или windows / linux / <android-устройство>
@@ -178,6 +181,12 @@ docs/         архитектура, протокол, решения, скри
 packaging/    иконки, установщик Windows (Inno Setup), сборка .deb, шаблон описания релиза
 .github/      GitHub Actions: CI и выпуск релизов
 ```
+
+## Поддержать проект
+
+Thelxis бесплатный и с открытым кодом. Если он экономит вам время — поддержите разработку на **[Boosty](https://boosty.to/boopi_coder)**: это помогает развивать текущие проекты и запускать новые.
+
+<a href="https://boosty.to/boopi_coder"><img src="docs/boosty-button.png" width="260" alt="Поддержать на Boosty"></a>
 
 ## Лицензия
 

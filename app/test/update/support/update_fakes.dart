@@ -49,7 +49,7 @@ String sha256Hex(List<int> bytes) {
 
 Map<String, dynamic> assetJson(String name, List<int> payload, {String? sha, int? size}) => {
       'name': name,
-      'url': 'https://github.com/sibawal/thelxis/releases/download/v0.2.0/$name',
+      'url': 'https://github.com/boopi-coder/thelxis/releases/download/v0.2.0/$name',
       'size': size ?? payload.length,
       'sha256': sha ?? sha256Hex(payload),
     };
@@ -58,7 +58,7 @@ Uint8List manifestBytes({
   String version = '0.2.0',
   Map<String, Object?>? assets,
   Object? v = 1,
-  String notesUrl = 'https://github.com/sibawal/thelxis/releases/tag/v0.2.0',
+  String notesUrl = 'https://github.com/boopi-coder/thelxis/releases/tag/v0.2.0',
 }) {
   final payload = Uint8List.fromList(List<int>.generate(64, (i) => i));
   return Uint8List.fromList(utf8.encode(jsonEncode({

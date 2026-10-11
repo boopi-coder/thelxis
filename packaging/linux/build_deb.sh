@@ -89,7 +89,7 @@ Priority: optional
 Architecture: $arch
 Installed-Size: $installed_kb
 Maintainer: Thelxis <noreply@users.noreply.github.com>
-Homepage: https://github.com/sibawal/thelxis
+Homepage: https://github.com/boopi-coder/thelxis
 Depends: libc6, libgtk-3-0, libglib2.0-0, libx11-6, libxext6, libxi6, libxtst6, libxrandr2, libxcomposite1, libxdamage1, libxfixes3, libxrender1, libdrm2, libgbm1, libpulse0, libasound2, pulseaudio | pipewire-pulse
 Description: Direct encrypted remote desktop
  Thelxis lets you view and control another computer or phone over a direct,

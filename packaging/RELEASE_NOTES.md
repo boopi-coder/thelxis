@@ -9,9 +9,9 @@ Thelxis — удалённый рабочий стол «компьютер — 
 
 | Платформа | Файл |
 |---|---|
-| Windows 10/11 x64 | [`Thelxis-{{VERSION}}-windows-x64-setup.exe`](https://github.com/sibawal/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-windows-x64-setup.exe) (установщик), [`Thelxis-{{VERSION}}-windows-x64.zip`](https://github.com/sibawal/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-windows-x64.zip) (без установки) |
-| macOS 12+ (Apple Silicon и Intel) | [`Thelxis-{{VERSION}}-macos-universal.dmg`](https://github.com/sibawal/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-macos-universal.dmg) |
-| Linux x64 | [`thelxis_{{VERSION}}_amd64.deb`](https://github.com/sibawal/thelxis/releases/download/{{TAG}}/thelxis_{{VERSION}}_amd64.deb), [`Thelxis-{{VERSION}}-linux-x64.tar.gz`](https://github.com/sibawal/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-linux-x64.tar.gz) |
+| Windows 10/11 x64 | [`Thelxis-{{VERSION}}-windows-x64-setup.exe`](https://github.com/boopi-coder/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-windows-x64-setup.exe) (установщик), [`Thelxis-{{VERSION}}-windows-x64.zip`](https://github.com/boopi-coder/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-windows-x64.zip) (без установки) |
+| macOS 12+ (Apple Silicon и Intel) | [`Thelxis-{{VERSION}}-macos-universal.dmg`](https://github.com/boopi-coder/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-macos-universal.dmg) |
+| Linux x64 | [`thelxis_{{VERSION}}_amd64.deb`](https://github.com/boopi-coder/thelxis/releases/download/{{TAG}}/thelxis_{{VERSION}}_amd64.deb), [`Thelxis-{{VERSION}}-linux-x64.tar.gz`](https://github.com/boopi-coder/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-linux-x64.tar.gz) |
 | Android 7.0+ | `Thelxis-{{VERSION}}-android-arm64-v8a.apk` (большинство телефонов), `...-armeabi-v7a.apk` (старые 32-битные), `...-x86_64.apk` (эмуляторы, Chromebook), `...-universal.apk` (если не уверены) |
 
 Контрольные суммы всех файлов — в `SHA256SUMS.txt`.
@@ -81,9 +81,9 @@ with no servers and no accounts. Encryption keys never leave your devices.
 
 | Platform | File |
 |---|---|
-| Windows 10/11 x64 | [`Thelxis-{{VERSION}}-windows-x64-setup.exe`](https://github.com/sibawal/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-windows-x64-setup.exe) (installer), [`Thelxis-{{VERSION}}-windows-x64.zip`](https://github.com/sibawal/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-windows-x64.zip) (portable) |
-| macOS 12+ (Apple Silicon and Intel) | [`Thelxis-{{VERSION}}-macos-universal.dmg`](https://github.com/sibawal/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-macos-universal.dmg) |
-| Linux x64 | [`thelxis_{{VERSION}}_amd64.deb`](https://github.com/sibawal/thelxis/releases/download/{{TAG}}/thelxis_{{VERSION}}_amd64.deb), [`Thelxis-{{VERSION}}-linux-x64.tar.gz`](https://github.com/sibawal/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-linux-x64.tar.gz) |
+| Windows 10/11 x64 | [`Thelxis-{{VERSION}}-windows-x64-setup.exe`](https://github.com/boopi-coder/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-windows-x64-setup.exe) (installer), [`Thelxis-{{VERSION}}-windows-x64.zip`](https://github.com/boopi-coder/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-windows-x64.zip) (portable) |
+| macOS 12+ (Apple Silicon and Intel) | [`Thelxis-{{VERSION}}-macos-universal.dmg`](https://github.com/boopi-coder/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-macos-universal.dmg) |
+| Linux x64 | [`thelxis_{{VERSION}}_amd64.deb`](https://github.com/boopi-coder/thelxis/releases/download/{{TAG}}/thelxis_{{VERSION}}_amd64.deb), [`Thelxis-{{VERSION}}-linux-x64.tar.gz`](https://github.com/boopi-coder/thelxis/releases/download/{{TAG}}/Thelxis-{{VERSION}}-linux-x64.tar.gz) |
 | Android 7.0+ | `Thelxis-{{VERSION}}-android-arm64-v8a.apk` (most phones), `...-armeabi-v7a.apk` (older 32-bit), `...-x86_64.apk` (emulators, Chromebooks), `...-universal.apk` (if unsure) |
 
 SHA-256 checksums of every file are in `SHA256SUMS.txt`.

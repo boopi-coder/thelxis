@@ -46,7 +46,7 @@ are kept for 14 days under the run's **Artifacts** section. Changes that only to
 
 ## Over-the-air updates
 
-The app polls `https://github.com/sibawal/thelxis/releases/latest/download/update.json` (+ `.sig`), see
+The app polls `https://github.com/boopi-coder/thelxis/releases/latest/download/update.json` (+ `.sig`), see
 `docs/PROTOCOL.md` section 10. In `release.yml`, for stable tags only (a tag containing `-` is a pre-release and gets
 no manifest; `releases/latest` ignores pre-releases anyway), the `publish` job:
 
@@ -101,10 +101,10 @@ Create the Android keystore once and **back it up** (losing it means users must 
 ```bash
 keytool -genkeypair -v -keystore thelxis-release.jks -alias thelxis \
   -keyalg RSA -keysize 4096 -validity 10000
-base64 < thelxis-release.jks | tr -d '\n' | gh secret set ANDROID_KEYSTORE_BASE64 --repo sibawal/thelxis
-gh secret set ANDROID_KEYSTORE_PASSWORD --repo sibawal/thelxis
-gh secret set ANDROID_KEY_ALIAS --repo sibawal/thelxis --body thelxis
-gh secret set ANDROID_KEY_PASSWORD --repo sibawal/thelxis
+base64 < thelxis-release.jks | tr -d '\n' | gh secret set ANDROID_KEYSTORE_BASE64 --repo boopi-coder/thelxis
+gh secret set ANDROID_KEYSTORE_PASSWORD --repo boopi-coder/thelxis
+gh secret set ANDROID_KEY_ALIAS --repo boopi-coder/thelxis --body thelxis
+gh secret set ANDROID_KEY_PASSWORD --repo boopi-coder/thelxis
 ```
 
 At build time the workflow writes `app/android/app/release.jks` and `app/android/key.properties`

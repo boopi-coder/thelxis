@@ -13,10 +13,13 @@ No accounts, no relays, no cloud. Encryption keys live only on your devices.
 [![Android](https://img.shields.io/badge/Android-7%2B-3ddc84?logo=android&logoColor=white)](#download)
 [![License](https://img.shields.io/badge/license-MIT-22c55e)](LICENSE)
 [![Made by](https://img.shields.io/badge/made%20by-boopi.ru-7c3aed)](https://boopi.ru)
+[![Boosty](https://img.shields.io/badge/Boosty-boopi__coder-f15f2c?logo=boosty&logoColor=white)](https://boosty.to/boopi_coder)
 
 **English** | [Русский](README.ru.md)
 
 <img src="docs/screenshots/home-en.png" width="820" alt="Thelxis home screen">
+
+<a href="https://boosty.to/boopi_coder"><img src="docs/boosty-button.png" width="300" alt="Support on Boosty"></a>
 
 </div>
 
@@ -94,7 +97,7 @@ over TCP (for networks that block UDP), `47102/udp` LAN discovery.
 
 ## Download
 
-Grab the build for your system from **[Releases](https://github.com/sibawal/thelxis/releases/latest)**:
+Grab the build for your system from **[Releases](https://github.com/boopi-coder/thelxis/releases/latest)**:
 
 | System | File |
 |---|---|
@@ -155,7 +158,7 @@ Xcode on macOS, `clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev lib
 (Ubuntu 22.04+), JDK 17 and the Android SDK for Android.
 
 ```bash
-git clone https://github.com/sibawal/thelxis.git
+git clone https://github.com/boopi-coder/thelxis.git
 cd thelxis/app
 flutter pub get
 flutter run -d macos          # or windows / linux / <android device>
@@ -173,6 +176,12 @@ docs/         architecture, protocol, decisions, screenshots
 packaging/    icons, Windows installer (Inno Setup), .deb builder, release notes template
 .github/      GitHub Actions: CI and releases
 ```
+
+## Support the project
+
+Thelxis is free and open source. If it saves you time, support development on **[Boosty](https://boosty.to/boopi_coder)** — it funds current projects and helps launch new ones.
+
+<a href="https://boosty.to/boopi_coder"><img src="docs/boosty-button.png" width="260" alt="Support on Boosty"></a>
 
 ## License
 

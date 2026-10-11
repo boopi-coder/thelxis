@@ -12,7 +12,7 @@ abstract final class UpdateTrust {
 
   /// Where release manifests are fetched from (the only non-peer network
   /// endpoint the app ever contacts, and only when updates are enabled).
-  static const String repo = 'sibawal/thelxis';
+  static const String repo = 'boopi-coder/thelxis';
 
   static const String manifestUrl =
       'https://github.com/$repo/releases/latest/download/update.json';

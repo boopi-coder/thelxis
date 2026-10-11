@@ -232,10 +232,10 @@ sessions. Where the OS allows, the badge window is excluded from screen capture 
 ## 10. Over-the-air updates
 The only non-peer endpoint the app ever contacts, and only if "Automatic updates" is enabled (default on).
 ```
-GET https://github.com/sibawal/thelxis/releases/latest/download/update.json
-GET https://github.com/sibawal/thelxis/releases/latest/download/update.json.sig
+GET https://github.com/boopi-coder/thelxis/releases/latest/download/update.json
+GET https://github.com/boopi-coder/thelxis/releases/latest/download/update.json.sig
 update.json = {"v":1,"version":"0.2.0","published":"2026-10-20T10:00:00Z",
-               "notes_url":"https://github.com/sibawal/thelxis/releases/tag/v0.2.0",
+               "notes_url":"https://github.com/boopi-coder/thelxis/releases/tag/v0.2.0",
                "assets":{"windows-x64":{"name":"…-setup.exe","url":"https://…","size":123,"sha256":"<hex>"},
                          "macos-universal":{…dmg}, "linux-x64-deb":{…}, "linux-x64-tar":{…},
                          "android-arm64-v8a":{…}, "android-armeabi-v7a":{…}, "android-x86_64":{…},

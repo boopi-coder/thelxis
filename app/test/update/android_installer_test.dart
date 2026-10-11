@@ -16,7 +16,7 @@ void main() {
 
   final asset = UpdateAsset(
     name: 'a.apk',
-    url: Uri.parse('https://github.com/sibawal/thelxis/releases/download/v0.2.0/a.apk'),
+    url: Uri.parse('https://github.com/boopi-coder/thelxis/releases/download/v0.2.0/a.apk'),
     size: 3,
     sha256: sha256Hex([1, 2, 3]),
   );

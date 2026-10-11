@@ -14,7 +14,7 @@ import 'support/update_fakes.dart';
 
 final _asset = UpdateAsset(
   name: 'Thelxis-0.2.0-test',
-  url: Uri.parse('https://github.com/sibawal/thelxis/releases/download/v0.2.0/x'),
+  url: Uri.parse('https://github.com/boopi-coder/thelxis/releases/download/v0.2.0/x'),
   size: 3,
   sha256: sha256Hex([1, 2, 3]),
 );

@@ -2,7 +2,7 @@ name: thelxis
 description: "Thelxis — modern remote desktop"
 publish_to: none
 
-version: 0.3.0+4
+version: 0.3.1+5
 
 environment:
   sdk: ^3.13.5

@@ -46,7 +46,7 @@ already-encrypted DTLS packets, so even this hop on the device itself sees only 
   hidden), the listener keeps running; optional start at login, minimized.
 - **Mandatory "being controlled" badge** on the host: small frosted-glass always-on-top window in a screen corner
   with the logo, who is connected and the elapsed time; cannot be hidden or disabled; Stop ends the session.
-- **Over-the-air updates** from GitHub Releases of `sibawal/thelxis`, verified by an Ed25519 release key embedded in
+- **Over-the-air updates** from GitHub Releases of `boopi-coder/thelxis`, verified by an Ed25519 release key embedded in
   the app (PROTOCOL §10); installed only when no session is active.
 - **Beautiful, modern UI.**
 
