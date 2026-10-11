@@ -201,7 +201,8 @@ class StunMessage {
       final valueEnd = valueStart + attrLength;
       final next = valueStart + ((attrLength + 3) & ~3);
       if (valueEnd > end || next > end) return null;
-      if (attrType == StunAttr.messageIntegrity && message._integrityOffset < 0) {
+      if (attrType == StunAttr.messageIntegrity &&
+          message._integrityOffset < 0) {
         if (attrLength != 20) return null;
         message._integrityOffset = offset;
       } else if (attrType == StunAttr.fingerprint &&
@@ -209,10 +210,12 @@ class StunMessage {
         if (attrLength != 4) return null;
         message._fingerprintOffset = offset;
       }
-      message.attributes.add(StunAttribute(
-        attrType,
-        Uint8List.fromList(data.sublist(valueStart, valueEnd)),
-      ));
+      message.attributes.add(
+        StunAttribute(
+          attrType,
+          Uint8List.fromList(data.sublist(valueStart, valueEnd)),
+        ),
+      );
       offset = next;
     }
     return message;
@@ -261,8 +264,9 @@ class StunMessage {
     final raw = _raw;
     if (raw == null || _integrityOffset < 0) return false;
     final covered = Uint8List.fromList(raw.sublist(0, _integrityOffset));
-    ByteData.sublistView(covered)
-        .setUint16(2, _integrityOffset + stunIntegrityLength - stunHeaderLength);
+    ByteData.sublistView(
+      covered,
+    ).setUint16(2, _integrityOffset + stunIntegrityLength - stunHeaderLength);
     final expected = hmacSha1(key, covered);
     final actual = raw.sublist(_integrityOffset + 4, _integrityOffset + 24);
     return constantTimeEquals(expected, actual);
@@ -284,13 +288,15 @@ class StunMessage {
     var size = stunHeaderLength;
     final body = <StunAttribute>[
       for (final a in attributes)
-        if (a.type != StunAttr.messageIntegrity && a.type != StunAttr.fingerprint)
+        if (a.type != StunAttr.messageIntegrity &&
+            a.type != StunAttr.fingerprint)
           a,
     ];
     for (final a in body) {
       size += 4 + ((a.value.length + 3) & ~3);
     }
-    final total = size +
+    final total =
+        size +
         (integrityKey != null ? stunIntegrityLength : 0) +
         (fingerprint ? stunFingerprintLength : 0);
 
@@ -336,8 +342,8 @@ StunAddress? decodeXorAddress(Uint8List value, Uint8List transactionId) {
   final length = family == 0x01
       ? 4
       : family == 0x02
-          ? 16
-          : -1;
+      ? 16
+      : -1;
   if (length < 0 || value.length < 4 + length) return null;
   final port =
       ByteData.sublistView(value).getUint16(2) ^ (stunMagicCookie >>> 16);

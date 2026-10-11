@@ -827,6 +827,83 @@ void main() {
     });
   });
 
+  group('IPv6 UDP', () {
+    Future<StunMessage?> bindingOver6(int port, InternetAddress to) async {
+      final socket = await RawDatagramSocket.bind(
+        InternetAddress.loopbackIPv6,
+        0,
+      );
+      addTearDown(socket.close);
+      final tid = randomTransactionId();
+      final request = StunMessage(
+        method: StunMethod.binding,
+        messageClass: StunClass.request,
+        transactionId: tid,
+      ).encode(fingerprint: true);
+      for (var i = 0; i < 5; i++) {
+        socket.send(request, to, port);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        final d = socket.receive();
+        if (d != null) return StunMessage.parse(d.data);
+      }
+      return null;
+    }
+
+    Future<bool> ipv6Available() async {
+      try {
+        (await RawDatagramSocket.bind(InternetAddress.loopbackIPv6, 0)).close();
+        return true;
+      } on SocketException {
+        return false;
+      }
+    }
+
+    test('binds per concrete address and follows address changes', () async {
+      if (!await ipv6Available()) {
+        markTestSkipped('no IPv6 loopback on this machine');
+        return;
+      }
+      h = _Harness();
+      await h.start();
+      final port = h.server.boundUdpPort!;
+
+      // A wildcard :: bind would collide with the IPv4 socket on Linux and
+      // macOS; a concrete address must not.
+      await h.server.setUdpIpv6Addresses([InternetAddress.loopbackIPv6]);
+      final reply = await bindingOver6(port, InternetAddress.loopbackIPv6);
+      expect(reply, isNotNull);
+      expect(reply!.messageClass, StunClass.success);
+      expect(
+        reply.xorAddress(StunAttr.xorMappedAddress)!.address.address,
+        '::1',
+      );
+
+      // IPv4 keeps working next to it.
+      final c = await h.udp();
+      final v4 = await c.call(
+        StunMessage(
+          method: StunMethod.binding,
+          messageClass: StunClass.request,
+          transactionId: randomTransactionId(),
+        ),
+      );
+      expect(v4.messageClass, StunClass.success);
+
+      // Address gone: the socket is closed and nobody answers any more.
+      await h.server.setUdpIpv6Addresses(const []);
+      expect(await bindingOver6(port, InternetAddress.loopbackIPv6), isNull);
+    });
+
+    test('an address that cannot be bound is tolerated', () async {
+      h = _Harness();
+      await h.start();
+      await h.server.setUdpIpv6Addresses([
+        InternetAddress('2a02:abcd:ffff::1'),
+      ]);
+      expect(h.server.isRunning, isTrue);
+    });
+  });
+
   group('lifecycle', () {
     test('reports a busy port and keeps going', () async {
       final blocker = await RawDatagramSocket.bind(

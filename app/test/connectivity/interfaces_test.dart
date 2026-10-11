@@ -159,6 +159,43 @@ void main() {
     });
   });
 
+  group('Ipv4Subnet', () {
+    test('contains honours the prefix; odd prefixes become /24', () {
+      final s16 = Ipv4Subnet.of(InternetAddress('10.1.2.3'), 16);
+      expect(s16.contains(InternetAddress('10.1.200.1')), isTrue);
+      expect(s16.contains(InternetAddress('10.2.0.1')), isFalse);
+      final s32 = Ipv4Subnet.of(InternetAddress('192.168.1.5'), 32);
+      expect(s32.contains(InternetAddress('192.168.1.5')), isTrue);
+      expect(s32.contains(InternetAddress('192.168.1.6')), isFalse);
+      final odd = Ipv4Subnet.of(InternetAddress('192.168.1.5'), 0);
+      expect(odd.prefix, 24);
+      expect(odd.contains(InternetAddress('192.168.1.250')), isTrue);
+    });
+
+    test('isInDirectPrivateSubnet needs RFC 1918 on both sides', () {
+      final r = classifyInterfaces([
+        LocalInterface('en0', [InternetAddress('192.168.1.50')]),
+        LocalInterface('utun1', [InternetAddress('100.100.1.1')]),
+      ]);
+      expect(r.isInDirectPrivateSubnet(InternetAddress('192.168.1.2')), isTrue);
+      expect(
+        r.isInDirectPrivateSubnet(InternetAddress('100.100.1.2')),
+        isFalse,
+      );
+      expect(r.isInDirectPrivateSubnet(InternetAddress('8.8.8.8')), isFalse);
+      expect(r.isInDirectPrivateSubnet(InternetAddress('::1')), isFalse);
+    });
+
+    test('parseHostPort accepts names', () {
+      expect(parseHostPort('home.example.org:50000')?.host, 'home.example.org');
+      expect(parseHostPort('home.example.org:50000')?.port, 50000);
+      expect(parseHostPort('1.2.3.4:5')?.host, '1.2.3.4');
+      expect(parseHostPort('[::1]:5')?.host, '::1');
+      expect(parseHostPort('nohost'), isNull);
+      expect(parseHostPort('a:b:5'), isNull);
+    });
+  });
+
   group('classifyInterfaces', () {
     final machine = [
       LocalInterface('en0', [

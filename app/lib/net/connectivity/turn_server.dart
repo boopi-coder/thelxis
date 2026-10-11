@@ -47,6 +47,7 @@ class TurnServer {
     required this.grants,
     required this.relayAddress,
     required this.isLocalPeer,
+    this.isGatewayPeer,
     this.udpPort = 47100,
     this.tcpPort = 47101,
     this.realm = 'thelxis',
@@ -68,6 +69,10 @@ class TurnServer {
   /// re-scan interfaces on a cache miss).
   final Future<bool> Function(InternetAddress peer) isLocalPeer;
 
+  /// Extra peers that [TurnGrantRecord.gateway] grants may relay to (private
+  /// addresses in our own subnets). Null: gateway grants get no extra reach.
+  final Future<bool> Function(InternetAddress peer)? isGatewayPeer;
+
   final int udpPort;
   final int tcpPort;
   final String realm;
@@ -84,6 +89,8 @@ class TurnServer {
   static const Duration _nonceLifetime = Duration(minutes: 10);
 
   final List<RawDatagramSocket> _udpSockets = [];
+  final Map<String, RawDatagramSocket> _udp6 = {};
+  final Set<String> _udp6Failed = {};
   final List<ServerSocket> _tcpServers = [];
   final Set<_TcpLink> _tcpLinks = {};
   final Map<String, TurnAllocation> _allocations = {};
@@ -105,42 +112,48 @@ class TurnServer {
   Future<TurnBindResult> start() async {
     if (_running) {
       return TurnBindResult(
-          udp: boundUdpPort != null, tcp: boundTcpPort != null);
+        udp: boundUdpPort != null,
+        tcp: boundTcpPort != null,
+      );
     }
     final rng = Random.secure();
-    _nonceSecret = Uint8List.fromList(List.generate(32, (_) => rng.nextInt(256)));
+    _nonceSecret = Uint8List.fromList(
+      List.generate(32, (_) => rng.nextInt(256)),
+    );
     final errors = <String>[];
 
     try {
       final socket = await RawDatagramSocket.bind(
-          InternetAddress.anyIPv4, udpPort,
-          reuseAddress: false);
+        InternetAddress.anyIPv4,
+        udpPort,
+        reuseAddress: false,
+      );
       boundUdpPort = socket.port;
       _attachUdp(socket);
-      await _tryBindOptional(() async {
-        final v6 = await RawDatagramSocket.bind(
-            InternetAddress.anyIPv6, boundUdpPort!,
-            reuseAddress: false);
-        _attachUdp(v6);
-      });
     } on SocketException catch (e) {
-      errors.add('Port $udpPort (UDP) in use: STUN/TURN over UDP is disabled'
-          '${_osError(e)}');
+      errors.add(
+        'Port $udpPort (UDP) in use: STUN/TURN over UDP is disabled'
+        '${_osError(e)}',
+      );
     }
 
     try {
-      final server =
-          await ServerSocket.bind(InternetAddress.anyIPv4, tcpPort);
+      final server = await ServerSocket.bind(InternetAddress.anyIPv4, tcpPort);
       boundTcpPort = server.port;
       _attachTcp(server);
       await _tryBindOptional(() async {
-        final v6 = await ServerSocket.bind(InternetAddress.anyIPv6, boundTcpPort!,
-            v6Only: true);
+        final v6 = await ServerSocket.bind(
+          InternetAddress.anyIPv6,
+          boundTcpPort!,
+          v6Only: true,
+        );
         _attachTcp(v6);
       });
     } on SocketException catch (e) {
-      errors.add('Port $tcpPort (TCP) in use: TURN over TCP is disabled'
-          '${_osError(e)}');
+      errors.add(
+        'Port $tcpPort (TCP) in use: TURN over TCP is disabled'
+        '${_osError(e)}',
+      );
     }
 
     _running = boundUdpPort != null || boundTcpPort != null;
@@ -159,12 +172,54 @@ class TurnServer {
     return code == null || code <= 0 ? '' : ' (error $code)';
   }
 
+  /// Binds the UDP port on each of [addresses] (this machine's global IPv6
+  /// addresses) and closes sockets of addresses that went away.
+  ///
+  /// A wildcard `::` bind is not usable: on Linux and macOS it is dual-stack
+  /// and collides with the IPv4 wildcard socket (EADDRINUSE), on Windows it
+  /// is v6-only. Binding each concrete address works everywhere and makes
+  /// replies leave from the address the client sent to.
+  Future<void> setUdpIpv6Addresses(Iterable<InternetAddress> addresses) async {
+    final port = boundUdpPort;
+    if (!_running || port == null) return;
+    final wanted = {for (final a in addresses) a.address: a};
+    _udp6Failed.retainAll(
+      wanted.keys,
+    ); // retry an address only after it left once
+    for (final key in _udp6.keys.toList()) {
+      if (!wanted.containsKey(key)) {
+        final socket = _udp6.remove(key)!;
+        _udpSockets.remove(socket);
+        socket.close();
+      }
+    }
+    for (final entry in wanted.entries) {
+      if (_udp6.containsKey(entry.key) || _udp6Failed.contains(entry.key)) {
+        continue;
+      }
+      await _tryBindOptional(() async {
+        try {
+          final socket = await RawDatagramSocket.bind(
+            entry.value,
+            port,
+            reuseAddress: false,
+          );
+          _udp6[entry.key] = socket;
+          _attachUdp(socket);
+        } on SocketException {
+          _udp6Failed.add(entry.key);
+          rethrow;
+        }
+      });
+    }
+  }
+
   /// IPv6 listeners are best effort: hosts without IPv6 simply skip them.
   Future<void> _tryBindOptional(Future<void> Function() bind) async {
     try {
       await bind();
     } on SocketException catch (e) {
-      _log.d('optional IPv6 listener not available${_osError(e)}');
+      _log.d('IPv6 listener not available${_osError(e)}');
     }
   }
 
@@ -181,6 +236,8 @@ class TurnServer {
       s.close();
     }
     _udpSockets.clear();
+    _udp6.clear();
+    _udp6Failed.clear();
     for (final s in _tcpServers) {
       await s.close();
     }
@@ -202,8 +259,10 @@ class TurnServer {
       for (var i = 0; i < 64; i++) {
         final datagram = safeReceive(socket);
         if (datagram == null) break;
-        _onPacket(_UdpLink(socket, unmapIpv4(datagram.address), datagram.port),
-            datagram.data);
+        _onPacket(
+          _UdpLink(socket, unmapIpv4(datagram.address), datagram.port),
+          datagram.data,
+        );
       }
     }, onError: (Object e) => _log.d('udp socket error: $e'));
   }
@@ -266,7 +325,11 @@ class TurnServer {
     if (m.method == StunMethod.binding) {
       _sendSuccess(link, m, [
         StunAttribute.xorAddress(
-            StunAttr.xorMappedAddress, link.address, link.port, m.transactionId),
+          StunAttr.xorMappedAddress,
+          link.address,
+          link.port,
+          m.transactionId,
+        ),
       ]);
       return;
     }
@@ -341,8 +404,9 @@ class TurnServer {
     final ts = Uint8List.fromList(bytes.sublist(0, 8));
     final mac = hmacSha1(_nonceSecret, ts).sublist(0, 16);
     if (!constantTimeEquals(mac, bytes.sublist(8))) return false;
-    final issued =
-        DateTime.fromMillisecondsSinceEpoch(ByteData.sublistView(ts).getUint64(0));
+    final issued = DateTime.fromMillisecondsSinceEpoch(
+      ByteData.sublistView(ts).getUint64(0),
+    );
     final age = _clock().difference(issued);
     return !age.isNegative && age < _nonceLifetime;
   }
@@ -355,12 +419,14 @@ class TurnServer {
     List<StunAttribute> attributes, {
     Uint8List? key,
   }) {
-    link.send(StunMessage(
-      method: request.method,
-      messageClass: StunClass.success,
-      transactionId: request.transactionId,
-      attributes: attributes,
-    ).encode(integrityKey: key, fingerprint: true));
+    link.send(
+      StunMessage(
+        method: request.method,
+        messageClass: StunClass.success,
+        transactionId: request.transactionId,
+        attributes: attributes,
+      ).encode(integrityKey: key, fingerprint: true),
+    );
   }
 
   /// Error answer for an authenticated request (carries integrity when the
@@ -372,27 +438,35 @@ class TurnServer {
     String reason, {
     Uint8List? key,
   }) {
-    link.send(StunMessage(
-      method: request.method,
-      messageClass: StunClass.error,
-      transactionId: request.transactionId,
-      attributes: [StunAttribute.errorCode(code, reason)],
-    ).encode(integrityKey: key, fingerprint: true));
+    link.send(
+      StunMessage(
+        method: request.method,
+        messageClass: StunClass.error,
+        transactionId: request.transactionId,
+        attributes: [StunAttribute.errorCode(code, reason)],
+      ).encode(integrityKey: key, fingerprint: true),
+    );
   }
 
   /// 401 / 438: error plus a fresh REALM and NONCE, never integrity-protected.
   void _sendChallenge(
-      TurnClientLink link, StunMessage request, int code, String reason) {
-    link.send(StunMessage(
-      method: request.method,
-      messageClass: StunClass.error,
-      transactionId: request.transactionId,
-      attributes: [
-        StunAttribute.errorCode(code, reason),
-        StunAttribute.string(StunAttr.realm, realm),
-        StunAttribute.string(StunAttr.nonce, _newNonce()),
-      ],
-    ).encode(fingerprint: true));
+    TurnClientLink link,
+    StunMessage request,
+    int code,
+    String reason,
+  ) {
+    link.send(
+      StunMessage(
+        method: request.method,
+        messageClass: StunClass.error,
+        transactionId: request.transactionId,
+        attributes: [
+          StunAttribute.errorCode(code, reason),
+          StunAttribute.string(StunAttr.realm, realm),
+          StunAttribute.string(StunAttr.nonce, _newNonce()),
+        ],
+      ).encode(fingerprint: true),
+    );
   }
 
   // --------------------------------------------------------------- Allocate
@@ -406,18 +480,27 @@ class TurnServer {
     return d < defaultLifetime ? defaultLifetime : d;
   }
 
-  int _allocationsOf(TurnGrantRecord grant) =>
-      _allocations.values.where((a) => a.grant.username == grant.username).length;
+  int _allocationsOf(TurnGrantRecord grant) => _allocations.values
+      .where((a) => a.grant.username == grant.username)
+      .length;
 
   Future<void> _handleAllocate(
-      TurnClientLink link, StunMessage m, _Auth auth) async {
+    TurnClientLink link,
+    StunMessage m,
+    _Auth auth,
+  ) async {
     final existing = _allocations[link.id];
     if (existing != null) {
       if (_sameBytes(existing.allocateTransactionId, m.transactionId)) {
         _sendAllocateSuccess(link, m, existing, auth.key); // retransmission
       } else {
-        _sendError(link, m, StunError.allocationMismatch,
-            'Allocation Mismatch', key: auth.key);
+        _sendError(
+          link,
+          m,
+          StunError.allocationMismatch,
+          'Allocation Mismatch',
+          key: auth.key,
+        );
       }
       return;
     }
@@ -425,29 +508,54 @@ class TurnServer {
 
     final transport = m.attribute(StunAttr.requestedTransport);
     if (transport == null || transport.value.isEmpty) {
-      _sendError(link, m, StunError.badRequest, 'Missing REQUESTED-TRANSPORT',
-          key: auth.key);
+      _sendError(
+        link,
+        m,
+        StunError.badRequest,
+        'Missing REQUESTED-TRANSPORT',
+        key: auth.key,
+      );
       return;
     }
     if (transport.value[0] != 17) {
-      _sendError(link, m, StunError.unsupportedTransport,
-          'Unsupported Transport Protocol', key: auth.key);
+      _sendError(
+        link,
+        m,
+        StunError.unsupportedTransport,
+        'Unsupported Transport Protocol',
+        key: auth.key,
+      );
       return;
     }
     final family = m.attribute(StunAttr.requestedAddressFamily);
     if (family != null && family.value.isNotEmpty && family.value[0] != 0x01) {
-      _sendError(link, m, StunError.addressFamilyNotSupported,
-          'Address Family not Supported', key: auth.key);
+      _sendError(
+        link,
+        m,
+        StunError.addressFamilyNotSupported,
+        'Address Family not Supported',
+        key: auth.key,
+      );
       return;
     }
     if (_allocations.length >= maxAllocations) {
-      _sendError(link, m, StunError.insufficientCapacity,
-          'Insufficient Capacity', key: auth.key);
+      _sendError(
+        link,
+        m,
+        StunError.insufficientCapacity,
+        'Insufficient Capacity',
+        key: auth.key,
+      );
       return;
     }
     if (_allocationsOf(auth.grant) >= maxAllocationsPerGrant) {
-      _sendError(link, m, StunError.allocationQuotaReached,
-          'Allocation Quota Reached', key: auth.key);
+      _sendError(
+        link,
+        m,
+        StunError.allocationQuotaReached,
+        'Allocation Quota Reached',
+        key: auth.key,
+      );
       return;
     }
 
@@ -458,8 +566,13 @@ class TurnServer {
     } on SocketException catch (e) {
       _pendingAllocations.remove(link.id);
       _log.w('cannot bind relay socket', e);
-      _sendError(link, m, StunError.insufficientCapacity,
-          'Insufficient Capacity', key: auth.key);
+      _sendError(
+        link,
+        m,
+        StunError.insufficientCapacity,
+        'Insufficient Capacity',
+        key: auth.key,
+      );
       return;
     }
     _pendingAllocations.remove(link.id);
@@ -487,15 +600,27 @@ class TurnServer {
     _sendAllocateSuccess(link, m, allocation, auth.key);
   }
 
-  void _sendAllocateSuccess(TurnClientLink link, StunMessage m,
-      TurnAllocation allocation, Uint8List key) {
+  void _sendAllocateSuccess(
+    TurnClientLink link,
+    StunMessage m,
+    TurnAllocation allocation,
+    Uint8List key,
+  ) {
     final remaining = allocation.expiresAt.difference(_clock()).inSeconds;
     _sendSuccess(link, m, [
-      StunAttribute.xorAddress(StunAttr.xorRelayedAddress, relayAddress(),
-          allocation.relay.port, m.transactionId),
+      StunAttribute.xorAddress(
+        StunAttr.xorRelayedAddress,
+        relayAddress(),
+        allocation.relay.port,
+        m.transactionId,
+      ),
       StunAttribute.uint32(StunAttr.lifetime, max(remaining, 1)),
       StunAttribute.xorAddress(
-          StunAttr.xorMappedAddress, link.address, link.port, m.transactionId),
+        StunAttr.xorMappedAddress,
+        link.address,
+        link.port,
+        m.transactionId,
+      ),
     ], key: key);
   }
 
@@ -507,29 +632,43 @@ class TurnServer {
     final requested = m.uint32Attribute(StunAttr.lifetime);
     if (requested == 0) {
       _removeAllocation(link.id);
-      _sendSuccess(link, m, [StunAttribute.uint32(StunAttr.lifetime, 0)],
-          key: auth.key);
+      _sendSuccess(link, m, [
+        StunAttribute.uint32(StunAttr.lifetime, 0),
+      ], key: auth.key);
       return;
     }
     final lifetime = _lifetimeFor(m);
     allocation.expiresAt = _clock().add(lifetime);
-    _sendSuccess(link, m,
-        [StunAttribute.uint32(StunAttr.lifetime, lifetime.inSeconds)],
-        key: auth.key);
+    _sendSuccess(link, m, [
+      StunAttribute.uint32(StunAttr.lifetime, lifetime.inSeconds),
+    ], key: auth.key);
   }
 
   /// The allocation of this 5-tuple, or null after sending 437 / 441.
   TurnAllocation? _ownAllocation(
-      TurnClientLink link, StunMessage m, _Auth auth) {
+    TurnClientLink link,
+    StunMessage m,
+    _Auth auth,
+  ) {
     final allocation = _allocations[link.id];
     if (allocation == null) {
-      _sendError(link, m, StunError.allocationMismatch, 'Allocation Mismatch',
-          key: auth.key);
+      _sendError(
+        link,
+        m,
+        StunError.allocationMismatch,
+        'Allocation Mismatch',
+        key: auth.key,
+      );
       return null;
     }
     if (allocation.grant.username != auth.grant.username) {
-      _sendError(link, m, StunError.wrongCredentials, 'Wrong Credentials',
-          key: auth.key);
+      _sendError(
+        link,
+        m,
+        StunError.wrongCredentials,
+        'Wrong Credentials',
+        key: auth.key,
+      );
       return null;
     }
     return allocation;
@@ -541,19 +680,38 @@ class TurnServer {
   /// socket is IPv4) and a local address of this machine. Sends the error and
   /// returns null otherwise.
   Future<StunAddress?> _checkPeer(
-      TurnClientLink link, StunMessage m, StunAddress? peer, _Auth auth) async {
+    TurnClientLink link,
+    StunMessage m,
+    StunAddress? peer,
+    _Auth auth,
+  ) async {
     if (peer == null) {
-      _sendError(link, m, StunError.badRequest, 'Bad XOR-PEER-ADDRESS',
-          key: auth.key);
+      _sendError(
+        link,
+        m,
+        StunError.badRequest,
+        'Bad XOR-PEER-ADDRESS',
+        key: auth.key,
+      );
       return null;
     }
     final address = unmapIpv4(peer.address);
     if (address.type != InternetAddressType.IPv4) {
-      _sendError(link, m, StunError.peerAddressFamilyMismatch,
-          'Peer Address Family Mismatch', key: auth.key);
+      _sendError(
+        link,
+        m,
+        StunError.peerAddressFamilyMismatch,
+        'Peer Address Family Mismatch',
+        key: auth.key,
+      );
       return null;
     }
-    if (!await isLocalPeer(address)) {
+    final allowed =
+        await isLocalPeer(address) ||
+        (auth.grant.gateway &&
+            isGatewayPeer != null &&
+            await isGatewayPeer!(address));
+    if (!allowed) {
       _sendError(link, m, StunError.forbidden, 'Forbidden', key: auth.key);
       return null;
     }
@@ -561,22 +719,38 @@ class TurnServer {
   }
 
   Future<void> _handleCreatePermission(
-      TurnClientLink link, StunMessage m, _Auth auth) async {
+    TurnClientLink link,
+    StunMessage m,
+    _Auth auth,
+  ) async {
     if (_ownAllocation(link, m, auth) == null) return;
     final raw = m.attributesOf(StunAttr.xorPeerAddress).toList();
     if (raw.isEmpty) {
-      _sendError(link, m, StunError.badRequest, 'Missing XOR-PEER-ADDRESS',
-          key: auth.key);
+      _sendError(
+        link,
+        m,
+        StunError.badRequest,
+        'Missing XOR-PEER-ADDRESS',
+        key: auth.key,
+      );
       return;
     }
     final peers = <StunAddress>[];
     for (final attr in raw) {
       final peer = await _checkPeer(
-          link, m, decodeXorAddress(attr.value, m.transactionId), auth);
+        link,
+        m,
+        decodeXorAddress(attr.value, m.transactionId),
+        auth,
+      );
       if (peer == null) return;
       peers.add(peer);
     }
-    final allocation = _ownAllocation(link, m, auth); // may be gone after awaits
+    final allocation = _ownAllocation(
+      link,
+      m,
+      auth,
+    ); // may be gone after awaits
     if (allocation == null) return;
     final now = _clock();
     for (final peer in peers) {
@@ -588,29 +762,56 @@ class TurnServer {
   // ------------------------------------------------------------ ChannelBind
 
   Future<void> _handleChannelBind(
-      TurnClientLink link, StunMessage m, _Auth auth) async {
+    TurnClientLink link,
+    StunMessage m,
+    _Auth auth,
+  ) async {
     if (_ownAllocation(link, m, auth) == null) return;
     final channelAttr = m.attribute(StunAttr.channelNumber);
     if (channelAttr == null || channelAttr.value.length < 2) {
-      _sendError(link, m, StunError.badRequest, 'Missing CHANNEL-NUMBER',
-          key: auth.key);
+      _sendError(
+        link,
+        m,
+        StunError.badRequest,
+        'Missing CHANNEL-NUMBER',
+        key: auth.key,
+      );
       return;
     }
     final number = ByteData.sublistView(channelAttr.value).getUint16(0);
     if (number < ChannelData.minChannel || number > ChannelData.maxChannel) {
-      _sendError(link, m, StunError.badRequest, 'Invalid channel number',
-          key: auth.key);
+      _sendError(
+        link,
+        m,
+        StunError.badRequest,
+        'Invalid channel number',
+        key: auth.key,
+      );
       return;
     }
-    final peer = await _checkPeer(link, m, m.xorAddress(StunAttr.xorPeerAddress), auth);
+    final peer = await _checkPeer(
+      link,
+      m,
+      m.xorAddress(StunAttr.xorPeerAddress),
+      auth,
+    );
     if (peer == null) return;
     final allocation = _ownAllocation(link, m, auth);
     if (allocation == null) return;
-    final result =
-        allocation.bindChannel(number, peer.address, peer.port, _clock());
+    final result = allocation.bindChannel(
+      number,
+      peer.address,
+      peer.port,
+      _clock(),
+    );
     if (result != ChannelBindResult.ok) {
-      _sendError(link, m, StunError.badRequest, 'Channel conflict',
-          key: auth.key);
+      _sendError(
+        link,
+        m,
+        StunError.badRequest,
+        'Channel conflict',
+        key: auth.key,
+      );
       return;
     }
     _sendSuccess(link, m, const [], key: auth.key);
@@ -645,21 +846,32 @@ class TurnServer {
     if (!allocation.hasPermission(peer, now)) return;
     final channel = allocation.channelByPeer(peer, datagram.port, now);
     if (channel != null) {
-      allocation.link.send(ChannelData.encode(channel.number, datagram.data,
-          pad: allocation.link.isStream));
+      allocation.link.send(
+        ChannelData.encode(
+          channel.number,
+          datagram.data,
+          pad: allocation.link.isStream,
+        ),
+      );
       return;
     }
     final tid = randomTransactionId();
-    allocation.link.send(StunMessage(
-      method: StunMethod.data,
-      messageClass: StunClass.indication,
-      transactionId: tid,
-      attributes: [
-        StunAttribute.xorAddress(
-            StunAttr.xorPeerAddress, peer, datagram.port, tid),
-        StunAttribute(StunAttr.data, datagram.data),
-      ],
-    ).encode());
+    allocation.link.send(
+      StunMessage(
+        method: StunMethod.data,
+        messageClass: StunClass.indication,
+        transactionId: tid,
+        attributes: [
+          StunAttribute.xorAddress(
+            StunAttr.xorPeerAddress,
+            peer,
+            datagram.port,
+            tid,
+          ),
+          StunAttribute(StunAttr.data, datagram.data),
+        ],
+      ).encode(),
+    );
   }
 
   // ------------------------------------------------------------- housekeeping
@@ -734,7 +946,7 @@ class _UdpLink implements TurnClientLink {
 /// (RFC 5766 §11.5), so incoming bytes are re-framed before dispatch.
 class _TcpLink implements TurnClientLink {
   _TcpLink(this._socket, this.address, this.port, this._clock)
-      : lastActivity = _clock();
+    : lastActivity = _clock();
 
   final Socket _socket;
   final Clock _clock;

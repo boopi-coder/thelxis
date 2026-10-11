@@ -132,5 +132,8 @@ Uint8List md5(List<int> message) {
 
 /// Long-term credential key: MD5(username ":" realm ":" password), RFC 5389
 /// §15.4. SASLprep is not applied: Thelxis credentials are base64url ASCII.
-Uint8List longTermKey(List<int> username, List<int> realm, List<int> password) =>
-    md5([...username, 0x3a, ...realm, 0x3a, ...password]);
+Uint8List longTermKey(
+  List<int> username,
+  List<int> realm,
+  List<int> password,
+) => md5([...username, 0x3a, ...realm, 0x3a, ...password]);

@@ -58,8 +58,12 @@ class PcpClient implements MappingClient {
     int port = pcpPort,
     List<Duration> retries = defaultUdpRetries,
   }) async {
-    final client =
-        PcpClient(gateway, localAddress, port: port, retries: retries);
+    final client = PcpClient(
+      gateway,
+      localAddress,
+      port: port,
+      retries: retries,
+    );
     final request = client._header(opcode: 0, lifetime: 0);
     final reply = await udpRequest(
       gateway: gateway,
@@ -76,7 +80,11 @@ class PcpClient implements MappingClient {
   }
 
   /// 24-byte common request header with the IPv4-mapped client address.
-  Uint8List _header({required int opcode, required int lifetime, int extra = 0}) {
+  Uint8List _header({
+    required int opcode,
+    required int lifetime,
+    int extra = 0,
+  }) {
     final out = Uint8List(24 + extra);
     out[0] = 2; // version
     out[1] = opcode; // R bit = 0 (request)
@@ -93,12 +101,17 @@ class PcpClient implements MappingClient {
   Uint8List _nonceFor(MappingProtocol protocol, int internalPort) =>
       _nonces.putIfAbsent(
         '${protocol.name}:$internalPort',
-        () => Uint8List.fromList(List.generate(12, (_) => _random.nextInt(256))),
+        () =>
+            Uint8List.fromList(List.generate(12, (_) => _random.nextInt(256))),
       );
 
   Future<({int externalPort, Duration lifetime, InternetAddress? external})>
-      _map(MappingProtocol protocol, int internalPort, int externalPort,
-          int lifetimeSeconds) async {
+  _map(
+    MappingProtocol protocol,
+    int internalPort,
+    int externalPort,
+    int lifetimeSeconds,
+  ) async {
     final nonce = _nonceFor(protocol, internalPort);
     final protocolNumber = protocol == MappingProtocol.tcp ? 6 : 17;
     final request = _header(opcode: 1, lifetime: lifetimeSeconds, extra: 36);
@@ -126,8 +139,9 @@ class PcpClient implements MappingClient {
     final result = reply[3];
     if (result != 0) {
       throw MappingException(
-          'PCP mapping failed: ${_resultNames[result] ?? 'result $result'}',
-          code: result);
+        'PCP mapping failed: ${_resultNames[result] ?? 'result $result'}',
+        code: result,
+      );
     }
     final r = ByteData.sublistView(reply);
     final external = _ipv4FromMapped(reply, 44);
@@ -158,7 +172,11 @@ class PcpClient implements MappingClient {
     required Duration lifetime,
   }) async {
     final r = await _map(
-        protocol, internalPort, suggestedExternalPort, lifetime.inSeconds);
+      protocol,
+      internalPort,
+      suggestedExternalPort,
+      lifetime.inSeconds,
+    );
     return MappingGrant(externalPort: r.externalPort, lifetime: r.lifetime);
   }
 
@@ -180,7 +198,9 @@ class PcpClient implements MappingClient {
 /// All local candidates for PCP toward [gateway], best match first. Exposed
 /// so the orchestrator can retry on ADDRESS_MISMATCH with another address.
 List<InternetAddress> pcpLocalCandidates(
-    InternetAddress gateway, Iterable<InternetAddress> locals) {
+  InternetAddress gateway,
+  Iterable<InternetAddress> locals,
+) {
   final best = pickLocalFor(gateway, locals);
   return [
     ?best,

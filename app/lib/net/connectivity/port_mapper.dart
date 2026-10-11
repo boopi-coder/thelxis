@@ -43,11 +43,11 @@ class ActiveMapping {
   Duration lifetime;
 
   PortMapping toPortMapping(MappingMethod method) => PortMapping(
-        protocol: protocol,
-        internalPort: internalPort,
-        externalPort: externalPort,
-        method: method,
-      );
+    protocol: protocol,
+    internalPort: internalPort,
+    externalPort: externalPort,
+    method: method,
+  );
 }
 
 /// Shared inputs of the discovery probes.
@@ -95,43 +95,45 @@ Future<T?> _firstNonNull<T>(List<Future<T?>> futures) {
   final done = Completer<T?>();
   var pending = futures.length;
   for (final f in futures) {
-    f.then((value) {
-      if (value != null && !done.isCompleted) done.complete(value);
-    }, onError: (Object _) {}).whenComplete(() {
-      if (--pending == 0 && !done.isCompleted) done.complete(null);
-    });
+    f
+        .then((value) {
+          if (value != null && !done.isCompleted) done.complete(value);
+        }, onError: (Object _) {})
+        .whenComplete(() {
+          if (--pending == 0 && !done.isCompleted) done.complete(null);
+        });
   }
   return done.future;
 }
 
 List<MappingProbe> defaultProbes() => [
-      MappingProbe(MappingMethod.upnp, (ctx) async {
-        final discovery = UpnpDiscovery(
-          interfaces: ctx.locals.interfaces,
-          unicastTargets: await ctx.gateways(),
-          allowLoopback: ctx.allowLoopback,
-        );
-        final gateway = await discovery.discover();
-        ctx.routerHints.addAll(discovery.respondingRouters);
-        return gateway;
-      }),
-      MappingProbe(MappingMethod.pcp, (ctx) async {
-        final gateways = await ctx.gateways();
-        return _firstNonNull<MappingClient>([
-          for (final gw in gateways)
-            () async {
-              final local = pickLocalFor(gw, ctx.locals.lanIPv4);
-              return local == null ? null : PcpClient.probe(gw, local);
-            }(),
-        ]);
-      }),
-      MappingProbe(MappingMethod.natPmp, (ctx) async {
-        final gateways = await ctx.gateways();
-        return _firstNonNull<MappingClient>([
-          for (final gw in gateways) NatPmpClient.probe(gw),
-        ]);
-      }),
-    ];
+  MappingProbe(MappingMethod.upnp, (ctx) async {
+    final discovery = UpnpDiscovery(
+      interfaces: ctx.locals.interfaces,
+      unicastTargets: await ctx.gateways(),
+      allowLoopback: ctx.allowLoopback,
+    );
+    final gateway = await discovery.discover();
+    ctx.routerHints.addAll(discovery.respondingRouters);
+    return gateway;
+  }),
+  MappingProbe(MappingMethod.pcp, (ctx) async {
+    final gateways = await ctx.gateways();
+    return _firstNonNull<MappingClient>([
+      for (final gw in gateways)
+        () async {
+          final local = pickLocalFor(gw, ctx.locals.lanIPv4);
+          return local == null ? null : PcpClient.probe(gw, local);
+        }(),
+    ]);
+  }),
+  MappingProbe(MappingMethod.natPmp, (ctx) async {
+    final gateways = await ctx.gateways();
+    return _firstNonNull<MappingClient>([
+      for (final gw in gateways) NatPmpClient.probe(gw),
+    ]);
+  }),
+];
 
 class MapperOutcome {
   const MapperOutcome({
@@ -155,8 +157,10 @@ class MapperOutcome {
 }
 
 class PortMapper {
-  PortMapper({List<MappingProbe>? probes, this.lifetime = defaultMappingLifetime})
-      : probes = probes ?? defaultProbes();
+  PortMapper({
+    List<MappingProbe>? probes,
+    this.lifetime = defaultMappingLifetime,
+  }) : probes = probes ?? defaultProbes();
 
   final List<MappingProbe> probes;
   final Duration lifetime;
@@ -164,7 +168,9 @@ class PortMapper {
   /// Finds a router and maps [targets]. The first target is the one that must
   /// succeed (the signaling port); the rest are best effort.
   Future<MapperOutcome> establish(
-      DiscoveryContext ctx, List<MappingTarget> targets) async {
+    DiscoveryContext ctx,
+    List<MappingTarget> targets,
+  ) async {
     assert(targets.isNotEmpty);
     final problems = <String>[];
     var gatewayFound = false;
@@ -182,30 +188,43 @@ class PortMapper {
 
       final mappings = <ActiveMapping>[];
       final local = <String>[];
+      // The first mapping settles the offset between internal and external
+      // ports (another PC behind the same router may own 47100); the others
+      // ask for the same offset so one PC's ports stay a recognisable block.
+      var offset = 0;
       for (var i = 0; i < targets.length; i++) {
         final target = targets[i];
         try {
+          final wanted = target.internalPort + offset;
           final grant = await client.map(
             protocol: target.protocol,
             internalPort: target.internalPort,
-            suggestedExternalPort: target.internalPort,
+            suggestedExternalPort: wanted >= 1 && wanted <= 65535
+                ? wanted
+                : target.internalPort,
             lifetime: lifetime,
           );
-          mappings.add(ActiveMapping(
-            protocol: target.protocol,
-            internalPort: target.internalPort,
-            externalPort: grant.externalPort,
-            lifetime: grant.lifetime,
-          ));
+          if (i == 0) offset = grant.externalPort - target.internalPort;
+          mappings.add(
+            ActiveMapping(
+              protocol: target.protocol,
+              internalPort: target.internalPort,
+              externalPort: grant.externalPort,
+              lifetime: grant.lifetime,
+            ),
+          );
         } on MappingException catch (e) {
-          local.add('${_methodLabel(probe.method)} could not map '
-              '${target.label}: ${e.message}'
-              '${e.code == null ? '' : ' (code ${e.code})'}');
+          local.add(
+            '${_methodLabel(probe.method)} could not map '
+            '${target.label}: ${e.message}'
+            '${e.code == null ? '' : ' (code ${e.code})'}',
+          );
           if (i == 0) break; // signaling port refused: this method is useless
         }
       }
 
-      if (mappings.isNotEmpty && mappings.first.internalPort == targets.first.internalPort &&
+      if (mappings.isNotEmpty &&
+          mappings.first.internalPort == targets.first.internalPort &&
           mappings.first.protocol == targets.first.protocol) {
         InternetAddress? external;
         try {
@@ -282,7 +301,7 @@ class PortMapper {
 }
 
 String _methodLabel(MappingMethod m) => switch (m) {
-      MappingMethod.upnp => 'UPnP',
-      MappingMethod.natPmp => 'NAT-PMP',
-      MappingMethod.pcp => 'PCP',
-    };
+  MappingMethod.upnp => 'UPnP',
+  MappingMethod.natPmp => 'NAT-PMP',
+  MappingMethod.pcp => 'PCP',
+};

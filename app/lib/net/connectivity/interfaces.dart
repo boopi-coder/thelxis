@@ -147,7 +147,8 @@ Ipv4Kind? ipv4KindOf(InternetAddress address) {
 /// True when [ip] is an IPv4 literal that peers on the internet can reach.
 bool isPublicIpv4(String? ip) {
   final a = tryParseIpv4(ip);
-  return a != null && classifyIpv4Bytes(a.rawAddress) == Ipv4Kind.publicRoutable;
+  return a != null &&
+      classifyIpv4Bytes(a.rawAddress) == Ipv4Kind.publicRoutable;
 }
 
 /// Kind of an IPv4 literal, or null when [ip] is not one.
@@ -199,12 +200,27 @@ String formatHostPort(String host, int port) =>
   return (host: host, port: port);
 }
 
+/// Like [parseIpPort] but the host may also be a DNS name.
+({String host, int port})? parseHostPort(String? text) {
+  final ip = parseIpPort(text);
+  if (ip != null) return ip;
+  if (text == null) return null;
+  final s = text.trim();
+  final colon = s.lastIndexOf(':');
+  if (colon <= 0 || s.contains('[') || s.indexOf(':') != colon) return null;
+  final port = int.tryParse(s.substring(colon + 1));
+  if (port == null || port < 1 || port > 65535) return null;
+  return (host: s.substring(0, colon), port: port);
+}
+
 /// Picks the local address that most likely sits on the same subnet as
 /// [gateway]: same /24 first, otherwise the longest common prefix. Dart does
 /// not expose netmasks, so this is a heuristic; callers that hold a real
 /// connection to the gateway should prefer its local address.
 InternetAddress? pickLocalFor(
-    InternetAddress gateway, Iterable<InternetAddress> locals) {
+  InternetAddress gateway,
+  Iterable<InternetAddress> locals,
+) {
   final g = unmapIpv4(gateway);
   if (g.type != InternetAddressType.IPv4) return null;
   InternetAddress? best;
@@ -224,7 +240,8 @@ InternetAddress? pickLocalFor(
 /// Number of leading bits two IPv4 addresses share (0 when either is not IPv4).
 int commonPrefixBits(InternetAddress a, InternetAddress b) {
   final x = unmapIpv4(a), y = unmapIpv4(b);
-  if (x.type != InternetAddressType.IPv4 || y.type != InternetAddressType.IPv4) {
+  if (x.type != InternetAddressType.IPv4 ||
+      y.type != InternetAddressType.IPv4) {
     return 0;
   }
   return _commonPrefixBits(x.rawAddress, y.rawAddress);
@@ -249,10 +266,18 @@ int _commonPrefixBits(List<int> a, List<int> b) {
 /// One network interface as seen by the OS (decoupled from `dart:io` so tests
 /// can feed synthetic machines).
 class LocalInterface {
-  const LocalInterface(this.name, this.addresses);
+  const LocalInterface(
+    this.name,
+    this.addresses, {
+    this.prefixLengths = const {},
+  });
 
   final String name;
   final List<InternetAddress> addresses;
+
+  /// Subnet prefix length per `address.address`, when the OS reported it.
+  /// Missing entries are treated as /24 for IPv4.
+  final Map<String, int> prefixLengths;
 }
 
 typedef InterfaceLister = Future<List<LocalInterface>> Function();
@@ -277,7 +302,12 @@ Future<List<LocalInterface>> listSystemInterfaces() async {
     type: InternetAddressType.any,
   );
   return [
-    for (final i in interfaces) LocalInterface(i.name, List.of(i.addresses)),
+    for (final i in interfaces)
+      LocalInterface(
+        i.name,
+        List.of(i.addresses),
+        prefixLengths: {for (final a in i.addresses) a.address: a.prefixLength},
+      ),
   ];
 }
 
@@ -290,6 +320,7 @@ class LocalAddresses {
     this.globalIPv6 = const [],
     this.all = const {},
     this.interfaces = const [],
+    this.privateSubnets = const [],
   });
 
   /// RFC 1918 and 100.64/10 addresses on real (non-virtual) interfaces,
@@ -307,8 +338,44 @@ class LocalAddresses {
   /// The raw interfaces, for components that bind per interface (SSDP).
   final List<LocalInterface> interfaces;
 
+  /// Directly connected RFC 1918 subnets of this machine (all interfaces).
+  final List<Ipv4Subnet> privateSubnets;
+
   bool isLocal(InternetAddress address) => all.contains(addressKey(address));
+
+  /// A private (RFC 1918) IPv4 address inside one of our own subnets: what an
+  /// office-gateway grant may relay to besides this machine itself.
+  bool isInDirectPrivateSubnet(InternetAddress address) {
+    final a = unmapIpv4(address);
+    if (a.type != InternetAddressType.IPv4) return false;
+    if (classifyIpv4Bytes(a.rawAddress) != Ipv4Kind.private) return false;
+    return privateSubnets.any((s) => s.contains(a));
+  }
 }
+
+/// An IPv4 network (address masked to [prefix] bits).
+class Ipv4Subnet {
+  const Ipv4Subnet(this.network, this.prefix);
+
+  factory Ipv4Subnet.of(InternetAddress address, int prefix) {
+    final p = prefix >= 8 && prefix <= 32 ? prefix : 24;
+    return Ipv4Subnet(_ipv4Int(address) & _mask(p), p);
+  }
+
+  final int network;
+  final int prefix;
+
+  bool contains(InternetAddress address) =>
+      (_ipv4Int(address) & _mask(prefix)) == network;
+}
+
+int _ipv4Int(InternetAddress a) {
+  final b = a.rawAddress;
+  return (b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3];
+}
+
+int _mask(int prefix) =>
+    prefix == 0 ? 0 : (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF;
 
 /// Pure part of the scan.
 LocalAddresses classifyInterfaces(List<LocalInterface> interfaces) {
@@ -320,12 +387,19 @@ LocalAddresses classifyInterfaces(List<LocalInterface> interfaces) {
     addressKey(InternetAddress.loopbackIPv6),
   };
   final seen = <String>{};
+  final subnets = <Ipv4Subnet>[];
 
   for (final iface in interfaces) {
     final virtual = isVirtualInterfaceName(iface.name);
     for (final raw in iface.addresses) {
       final address = unmapIpv4(raw);
       all.add(addressKey(address));
+      if (address.type == InternetAddressType.IPv4 &&
+          classifyIpv4Bytes(address.rawAddress) == Ipv4Kind.private) {
+        subnets.add(
+          Ipv4Subnet.of(address, iface.prefixLengths[raw.address] ?? 24),
+        );
+      }
       if (virtual || !seen.add(addressKey(address))) continue;
       if (address.type == InternetAddressType.IPv4) {
         switch (classifyIpv4Bytes(address.rawAddress)) {
@@ -339,9 +413,11 @@ LocalAddresses classifyInterfaces(List<LocalInterface> interfaces) {
           Ipv6Kind.globalUnicast) {
         // Strip a zone id if the platform reported one; global addresses
         // do not need it.
-        v6.add(address.address.contains('%')
-            ? InternetAddress.fromRawAddress(address.rawAddress)
-            : address);
+        v6.add(
+          address.address.contains('%')
+              ? InternetAddress.fromRawAddress(address.rawAddress)
+              : address,
+        );
       }
     }
   }
@@ -365,6 +441,7 @@ LocalAddresses classifyInterfaces(List<LocalInterface> interfaces) {
     globalIPv6: List.unmodifiable(v6),
     all: Set.unmodifiable(all),
     interfaces: List.unmodifiable(interfaces),
+    privateSubnets: List.unmodifiable(subnets),
   );
 }
 

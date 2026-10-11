@@ -299,6 +299,250 @@ void main() {
     );
   });
 
+  group('manual forwarding', () {
+    const manual = ManualForwarding(
+      externalHost: 'home.example.org',
+      signalingTcp: 50000,
+      turnUdp: 50001,
+      turnTcp: 50002,
+    );
+
+    test('advertised first, report flag set, reachable', () async {
+      probe.router = null;
+      await service.start(portMapping: true);
+      expect(
+        service.report.value.problems,
+        contains('No UPnP/NAT-PMP/PCP router found'),
+      );
+      service.setManualForwarding(manual);
+      final r = service.report.value;
+      expect(r.manualForwarding, isTrue);
+      expect(r.reachableIPv4, isTrue);
+      expect(r.problems, isNot(contains('No UPnP/NAT-PMP/PCP router found')));
+      expect(r.problems.where((p) => p.contains('unreachable')), isEmpty);
+      expect(service.advertisedAddresses().first, 'home.example.org:50000');
+      expect(service.advertisedAddresses(), contains('192.168.1.50:47100'));
+
+      service.setManualForwarding(null);
+      expect(service.report.value.manualForwarding, isFalse);
+      expect(service.report.value.reachableIPv4, isFalse);
+      expect(
+        service.advertisedAddresses(),
+        isNot(contains('home.example.org:50000')),
+      );
+    });
+
+    test(
+      'without externalHost the router\'s public WAN address is used',
+      () async {
+        await service.start(portMapping: true);
+        service.setManualForwarding(
+          const ManualForwarding(
+            signalingTcp: 50000,
+            turnUdp: 50001,
+            turnTcp: 50002,
+          ),
+        );
+        expect(service.advertisedAddresses().first, '93.184.216.34:50000');
+        expect(service.advertisedAddresses(), contains('93.184.216.34:47100'));
+      },
+    );
+
+    test('without any known external address nothing is invented', () async {
+      probe.router = null;
+      await service.start(portMapping: false);
+      service.setManualForwarding(
+        const ManualForwarding(
+          signalingTcp: 50000,
+          turnUdp: 50001,
+          turnTcp: 50002,
+        ),
+      );
+      expect(
+        service.advertisedAddresses().any((a) => a.endsWith(':50000')),
+        isFalse,
+      );
+      expect(service.report.value.manualForwarding, isTrue);
+    });
+
+    test('a setting made before start() is applied by start()', () async {
+      service.setManualForwarding(manual);
+      expect(service.advertisedAddresses(), isEmpty);
+      await service.start(portMapping: false);
+      expect(service.report.value.manualForwarding, isTrue);
+      expect(service.advertisedAddresses().first, 'home.example.org:50000');
+    });
+
+    test(
+      'grants carry the manual TURN ports for dialers that came in on it',
+      () async {
+        await service.start(portMapping: false);
+        final local = service.issueTurnGrant()!;
+        service.setManualForwarding(manual);
+        for (final dialed in [
+          'home.example.org:50000',
+          '93.184.216.34:50000',
+          '[2a00:1450::1]:50000',
+        ]) {
+          final g = service.issueTurnGrant(dialedAddress: dialed)!;
+          expect((g.udpPort, g.tcpPort), (50001, 50002), reason: dialed);
+        }
+        for (final dialed in [
+          '192.168.1.50:50000', // LAN dialer
+          '127.0.0.1:50000',
+          '93.184.216.34:47100', // not the manual port
+          null,
+          'garbage',
+        ]) {
+          final g = service.issueTurnGrant(dialedAddress: dialed)!;
+          expect(
+            (g.udpPort, g.tcpPort),
+            (local.udpPort, local.tcpPort),
+            reason: '$dialed',
+          );
+        }
+      },
+    );
+
+    test(
+      'a manual port equal to the local one never hijacks LAN dialers',
+      () async {
+        await service.start(portMapping: false);
+        final local = service.issueTurnGrant()!;
+        service.setManualForwarding(
+          const ManualForwarding(
+            signalingTcp: 47100,
+            turnUdp: 41000,
+            turnTcp: 41001,
+          ),
+        );
+        final lan = service.issueTurnGrant(
+          dialedAddress: '192.168.1.50:47100',
+        )!;
+        expect(lan.udpPort, local.udpPort);
+        final wan = service.issueTurnGrant(
+          dialedAddress: '93.184.216.34:47100',
+        )!;
+        expect((wan.udpPort, wan.tcpPort), (41000, 41001));
+      },
+    );
+
+    test('a UPnP mapping match still wins over manual ports', () async {
+      router.portShift = 5;
+      await service.start(portMapping: true);
+      service.setManualForwarding(manual);
+      final g = service.issueTurnGrant(dialedAddress: '93.184.216.34:47105')!;
+      expect(g.udpPort, isNot(50001));
+    });
+  });
+
+  group('gateway grants', () {
+    List<LocalInterface> machine({Map<String, int> prefixes = const {}}) => [
+      LocalInterface('en0', [
+        InternetAddress('192.168.1.50'),
+        InternetAddress('10.1.2.3'),
+      ], prefixLengths: prefixes),
+      LocalInterface('utun3', [InternetAddress('100.100.1.1')]),
+    ];
+
+    /// One allocation per grant (the quota is four), many permission asks.
+    Future<Future<StunMessage> Function(String ip)> session(TurnGrant g) async {
+      final c = await TurnTestClient.udp(g.udpPort);
+      addTearDown(c.close);
+      await c.authed(
+        StunMethod.allocate,
+        [transportUdp()],
+        g.username,
+        g.credential,
+      );
+      return (ip) => c.authed(
+        StunMethod.createPermission,
+        [peerAttr(ip, 40000)],
+        g.username,
+        g.credential,
+      );
+    }
+
+    test(
+      'may relay to private peers in our own subnets, nothing else',
+      () async {
+        interfaces = machine(prefixes: {'192.168.1.50': 24, '10.1.2.3': 16});
+        await service.start(portMapping: false);
+        final g = service.issueTurnGrant(gateway: true)!;
+        final permit = await session(g);
+        expect((await permit('192.168.1.77')).messageClass, StunClass.success);
+        expect(
+          (await permit('10.1.200.9')).messageClass,
+          StunClass.success,
+          reason: '/16 from the interface prefix',
+        );
+        expect(
+          (await permit('192.168.1.50')).messageClass,
+          StunClass.success,
+          reason: 'the gateway itself',
+        );
+        for (final ip in [
+          '192.168.2.5', // private, other subnet
+          '10.2.0.1', // outside the /16
+          '172.16.0.1', // another private range
+          '100.100.1.2', // CGNAT overlay is not RFC 1918
+          '93.184.216.34', // public
+          '8.8.8.8',
+        ]) {
+          expect((await permit(ip)).errorCode?.code, 403, reason: ip);
+        }
+      },
+    );
+
+    test('an ordinary grant never reaches LAN neighbours', () async {
+      interfaces = machine();
+      await service.start(portMapping: false);
+      final g = service.issueTurnGrant()!;
+      final permit = await session(g);
+      expect((await permit('192.168.1.77')).errorCode?.code, 403);
+      expect((await permit('192.168.1.50')).messageClass, StunClass.success);
+    });
+
+    test('unknown prefix length is assumed to be /24', () async {
+      interfaces = machine();
+      await service.start(portMapping: false);
+      final g = service.issueTurnGrant(gateway: true)!;
+      final permit = await session(g);
+      expect((await permit('192.168.1.200')).messageClass, StunClass.success);
+      expect((await permit('192.168.2.1')).errorCode?.code, 403);
+      expect((await permit('10.1.2.77')).messageClass, StunClass.success);
+      expect((await permit('10.1.3.1')).errorCode?.code, 403);
+    });
+
+    test('ChannelBind follows the same rule', () async {
+      interfaces = machine();
+      await service.start(portMapping: false);
+      final g = service.issueTurnGrant(gateway: true)!;
+      final c = await TurnTestClient.udp(g.udpPort);
+      addTearDown(c.close);
+      await c.authed(
+        StunMethod.allocate,
+        [transportUdp()],
+        g.username,
+        g.credential,
+      );
+      var r = await c.authed(
+        StunMethod.channelBind,
+        [channelNumberAttr(0x4000), peerAttr('192.168.1.9', 5000)],
+        g.username,
+        g.credential,
+      );
+      expect(r.messageClass, StunClass.success);
+      r = await c.authed(
+        StunMethod.channelBind,
+        [channelNumberAttr(0x4001), peerAttr('192.168.9.9', 5000)],
+        g.username,
+        g.credential,
+      );
+      expect(r.errorCode?.code, 403);
+    });
+  });
+
   group('network changes', () {
     test(
       'a changed IPv4 set is noticed without refresh() and remaps',

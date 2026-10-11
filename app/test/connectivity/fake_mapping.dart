@@ -21,7 +21,7 @@ class FakeRouter implements MappingClient {
   /// Mappings that must be refused: "tcp:47100".
   final Set<String> refuse = {};
 
-  /// Added to the external port the router hands out.
+  /// External port handed out = internal port + this shift.
   int portShift = 0;
   Duration lifetime = const Duration(hours: 1);
 
@@ -52,7 +52,7 @@ class FakeRouter implements MappingClient {
       throw MappingException('refused', code: 2);
     }
     return MappingGrant(
-      externalPort: suggestedExternalPort + portShift,
+      externalPort: internalPort + portShift,
       lifetime: this.lifetime,
     );
   }

@@ -65,7 +65,36 @@ class FakeIgd {
 
   final List<SoapCall> calls = [];
   final List<String> searchTargets = [];
-  final Map<String, int> mappings = {}; // "TCP:47100" -> internal port
+
+  /// "TCP:47100" -> owner of that external port.
+  final Map<String, ({String client, int internalPort})> entries = {};
+
+  /// "TCP:47100" -> internal port (compat view for assertions).
+  Map<String, int> get mappings => {
+    for (final e in entries.entries) e.key: e.value.internalPort,
+  };
+
+  /// Like many cheap routers: AddPortMapping replaces a foreign entry
+  /// instead of answering 718.
+  bool overwriteForeign = false;
+
+  /// Does the router implement GetSpecificPortMappingEntry? When not, the
+  /// action answers with [getSpecificFault].
+  bool supportsGetSpecific = true;
+  int getSpecificFault = 401;
+
+  /// Another PC behind the same router owns this port.
+  void preload(
+    String protocol,
+    int externalPort, {
+    String client = '192.168.1.99',
+    int internalPort = 47100,
+  }) {
+    entries['$protocol:$externalPort'] = (
+      client: client,
+      internalPort: internalPort,
+    );
+  }
 
   static Future<FakeIgd> start({String Function(Uri base)? description}) async {
     final udp = await RawDatagramSocket.bind(InternetAddress.loopbackIPv4, 0);
@@ -134,15 +163,43 @@ class FakeIgd {
   ) async {
     int? error;
     final key = '${args['NewProtocol']}:${args['NewExternalPort']}';
+    String? specificBody;
     switch (action) {
       case 'AddPortMapping':
         if (addPortMappingErrors.isNotEmpty) {
           error = addPortMappingErrors.removeAt(0);
         }
-        if (error == null) mappings[key] = int.parse(args['NewInternalPort']!);
+        final clientIp = args['NewInternalClient'] ?? '';
+        final existing = entries[key];
+        if (error == null &&
+            existing != null &&
+            existing.client != clientIp &&
+            !overwriteForeign) {
+          error = 718;
+        }
+        if (error == null) {
+          entries[key] = (
+            client: clientIp,
+            internalPort: int.parse(args['NewInternalPort']!),
+          );
+        }
+      case 'GetSpecificPortMappingEntry':
+        if (!supportsGetSpecific) {
+          error = getSpecificFault;
+        } else if (entries[key] == null) {
+          error = 714;
+        } else {
+          final e = entries[key]!;
+          specificBody =
+              '<NewInternalPort>${e.internalPort}</NewInternalPort>'
+              '<NewInternalClient>${e.client}</NewInternalClient>'
+              '<NewEnabled>1</NewEnabled>'
+              '<NewPortMappingDescription>x</NewPortMappingDescription>'
+              '<NewLeaseDuration>0</NewLeaseDuration>';
+        }
       case 'DeletePortMapping':
         error = deleteError;
-        if (error == null) mappings.remove(key);
+        if (error == null) entries.remove(key);
     }
     if (error != null) {
       request.response.statusCode = 500;
@@ -160,7 +217,7 @@ class FakeIgd {
     }
     final inner = action == 'GetExternalIPAddress'
         ? '<NewExternalIPAddress>$externalIp</NewExternalIPAddress>'
-        : '';
+        : specificBody ?? '';
     request.response
       ..headers.contentType = ContentType('text', 'xml', charset: 'utf-8')
       ..write(

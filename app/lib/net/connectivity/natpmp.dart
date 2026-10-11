@@ -44,8 +44,12 @@ class NatPmpClient implements MappingClient {
     InternetAddress? bindAddress,
     List<Duration> retries = defaultUdpRetries,
   }) async {
-    final client = NatPmpClient(gateway,
-        port: port, bindAddress: bindAddress, retries: retries);
+    final client = NatPmpClient(
+      gateway,
+      port: port,
+      bindAddress: bindAddress,
+      retries: retries,
+    );
     try {
       final address = await client.externalAddress();
       return address == null ? null : client;
@@ -80,7 +84,11 @@ class NatPmpClient implements MappingClient {
     required Duration lifetime,
   }) async {
     final reply = await _mapRequest(
-        protocol, internalPort, suggestedExternalPort, lifetime.inSeconds);
+      protocol,
+      internalPort,
+      suggestedExternalPort,
+      lifetime.inSeconds,
+    );
     final view = ByteData.sublistView(reply);
     return MappingGrant(
       externalPort: view.getUint16(10),
@@ -98,8 +106,12 @@ class NatPmpClient implements MappingClient {
     await _mapRequest(protocol, internalPort, 0, 0);
   }
 
-  Future<Uint8List> _mapRequest(MappingProtocol protocol, int internalPort,
-      int externalPort, int lifetimeSeconds) async {
+  Future<Uint8List> _mapRequest(
+    MappingProtocol protocol,
+    int internalPort,
+    int externalPort,
+    int lifetimeSeconds,
+  ) async {
     final opcode = protocol == MappingProtocol.udp ? 1 : 2;
     final request = Uint8List(12);
     final view = ByteData.sublistView(request);
@@ -126,8 +138,9 @@ class NatPmpClient implements MappingClient {
   }
 
   MappingException _error(String what, int result) => MappingException(
-      'NAT-PMP $what failed: ${_resultNames[result] ?? 'result $result'}',
-      code: result);
+    'NAT-PMP $what failed: ${_resultNames[result] ?? 'result $result'}',
+    code: result,
+  );
 
   @override
   void close() {}

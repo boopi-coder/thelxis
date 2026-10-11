@@ -30,13 +30,21 @@ const int _maxBody = 512 * 1024;
 /// must not make us fetch hundreds of URLs).
 const int _maxLocations = 8;
 
+/// External ports tried per mapping (suggested, +10, +20 …).
+const int _maxPortCandidates = 5;
+
+enum _EntryState { free, ours, foreign, unknown }
+
 Uint8List buildMSearch(String searchTarget, {int mx = 2}) => Uint8List.fromList(
-    ascii.encode('M-SEARCH * HTTP/1.1\r\n'
-        'HOST: 239.255.255.250:1900\r\n'
-        'MAN: "ssdp:discover"\r\n'
-        'MX: $mx\r\n'
-        'ST: $searchTarget\r\n'
-        '\r\n'));
+  ascii.encode(
+    'M-SEARCH * HTTP/1.1\r\n'
+    'HOST: 239.255.255.250:1900\r\n'
+    'MAN: "ssdp:discover"\r\n'
+    'MX: $mx\r\n'
+    'ST: $searchTarget\r\n'
+    '\r\n',
+  ),
+);
 
 /// Header map (lower-case names) of an SSDP "200 OK" reply; null for anything
 /// else (NOTIFY traffic from other devices, garbage).
@@ -50,8 +58,9 @@ Map<String, String>? parseSsdpResponse(List<int> data) {
   for (final line in lines.skip(1)) {
     final colon = line.indexOf(':');
     if (colon <= 0) continue;
-    headers[line.substring(0, colon).trim().toLowerCase()] =
-        line.substring(colon + 1).trim();
+    headers[line.substring(0, colon).trim().toLowerCase()] = line
+        .substring(colon + 1)
+        .trim();
   }
   return headers;
 }
@@ -74,11 +83,15 @@ int _serviceRank(String type) {
 /// WANIPConnection / WANPPPConnection services of a device description with
 /// their absolute control URLs, preferred first. URLs that do not point at a
 /// LAN host are dropped (a hostile device must not steer us to the internet).
-List<IgdService> parseIgdDescription(String xml, Uri location,
-    {bool allowLoopback = false}) {
+List<IgdService> parseIgdDescription(
+  String xml,
+  Uri location, {
+  bool allowLoopback = false,
+}) {
   final doc = parseXmlLenient(xml);
   final urlBase = Uri.tryParse(doc.textOf('URLBase') ?? '');
-  final base = urlBase != null &&
+  final base =
+      urlBase != null &&
           urlBase.hasAuthority &&
           _isLanHost(urlBase.host, allowLoopback)
       ? urlBase
@@ -86,10 +99,10 @@ List<IgdService> parseIgdDescription(String xml, Uri location,
 
   final ranked = <(int, IgdService)>[];
   for (final service in doc.findAll('service')) {
-    final type = (service.child('serviceType') ?? service.find('serviceType'))
-        ?.text;
-    final control = (service.child('controlURL') ?? service.find('controlURL'))
-        ?.text;
+    final type =
+        (service.child('serviceType') ?? service.find('serviceType'))?.text;
+    final control =
+        (service.child('controlURL') ?? service.find('controlURL'))?.text;
     if (type == null || control == null || control.isEmpty) continue;
     final rank = _serviceRank(type);
     if (rank < 0) continue;
@@ -117,12 +130,12 @@ bool _isLanHost(String host, bool allowLoopback) {
 /// A bounded HTTP/1.1 client for router control endpoints.
 class UpnpHttp {
   UpnpHttp({this.timeout = const Duration(seconds: 5)})
-      : _client = HttpClient()
-          ..connectionTimeout = timeout
-          ..idleTimeout = const Duration(seconds: 2)
-          ..userAgent = 'Thelxis/0.1 UPnP/1.1'
-          // System proxy settings must never apply to a router on the LAN.
-          ..findProxy = ((_) => 'DIRECT');
+    : _client = HttpClient()
+        ..connectionTimeout = timeout
+        ..idleTimeout = const Duration(seconds: 2)
+        ..userAgent = 'Thelxis/0.1 UPnP/1.1'
+        // System proxy settings must never apply to a router on the LAN.
+        ..findProxy = ((_) => 'DIRECT');
 
   final Duration timeout;
   final HttpClient _client;
@@ -131,8 +144,10 @@ class UpnpHttp {
       _send(() => _client.getUrl(url), null, null);
 
   Future<({int status, String body})> post(
-          Uri url, String soapAction, String body) =>
-      _send(() => _client.postUrl(url), soapAction, body);
+    Uri url,
+    String soapAction,
+    String body,
+  ) => _send(() => _client.postUrl(url), soapAction, body);
 
   Future<({int status, String body})> _send(
     Future<HttpClientRequest> Function() open,
@@ -148,10 +163,16 @@ class UpnpHttp {
         if (body != null) {
           final bytes = utf8.encode(body);
           // preserveHeaderCase: some firmware compares header names verbatim.
-          request.headers.set('Content-Type', 'text/xml; charset="utf-8"',
-              preserveHeaderCase: true);
-          request.headers
-              .set('SOAPAction', '"$soapAction"', preserveHeaderCase: true);
+          request.headers.set(
+            'Content-Type',
+            'text/xml; charset="utf-8"',
+            preserveHeaderCase: true,
+          );
+          request.headers.set(
+            'SOAPAction',
+            '"$soapAction"',
+            preserveHeaderCase: true,
+          );
           request.contentLength = bytes.length;
           request.add(bytes);
         }
@@ -165,8 +186,7 @@ class UpnpHttp {
           status: response.statusCode,
           body: utf8.decode(chunks.takeBytes(), allowMalformed: true),
         );
-      })()
-          .timeout(timeout);
+      })().timeout(timeout);
     } on TimeoutException {
       throw MappingException('router did not answer in time');
     } on SocketException catch (e) {
@@ -182,7 +202,10 @@ class UpnpHttp {
 }
 
 String buildSoapEnvelope(
-    String serviceType, String action, List<(String, String)> arguments) {
+  String serviceType,
+  String action,
+  List<(String, String)> arguments,
+) {
   final args = StringBuffer();
   for (final (name, value) in arguments) {
     args.write('<$name>${xmlEscape(value)}</$name>');
@@ -215,6 +238,9 @@ class UpnpGateway implements MappingClient {
   /// first attempt.
   bool _permanentLeasesOnly = false;
 
+  /// The router does not implement GetSpecificPortMappingEntry.
+  bool _getSpecificUnsupported = false;
+
   @override
   MappingMethod get method => MappingMethod.upnp;
 
@@ -227,8 +253,11 @@ class UpnpGateway implements MappingClient {
   /// Runs a SOAP action; returns the response body element tree. UPnP faults
   /// surface as [MappingException] with the UPnP error code.
   Future<XmlNode> _call(String action, List<(String, String)> args) async {
-    final reply = await http.post(controlUrl, '$serviceType#$action',
-        buildSoapEnvelope(serviceType, action, args));
+    final reply = await http.post(
+      controlUrl,
+      '$serviceType#$action',
+      buildSoapEnvelope(serviceType, action, args),
+    );
     final doc = parseXmlLenient(reply.body);
     if (reply.status >= 200 && reply.status < 300) return doc;
     final fault = doc.textOf('errorCode');
@@ -246,7 +275,9 @@ class UpnpGateway implements MappingClient {
     try {
       final doc = await _call('GetExternalIPAddress', const []);
       final address = tryParseIpv4(doc.textOf('NewExternalIPAddress'));
-      if (address == null || address.rawAddress.every((b) => b == 0)) return null;
+      if (address == null || address.rawAddress.every((b) => b == 0)) {
+        return null;
+      }
       return address;
     } on MappingException catch (e) {
       // A router that answers with a SOAP fault is still alive; only a
@@ -256,8 +287,12 @@ class UpnpGateway implements MappingClient {
     }
   }
 
-  Future<void> _addPortMapping(MappingProtocol protocol, int externalPort,
-      int internalPort, int leaseSeconds) async {
+  Future<void> _addPortMapping(
+    MappingProtocol protocol,
+    int externalPort,
+    int internalPort,
+    int leaseSeconds,
+  ) async {
     await _call('AddPortMapping', [
       ('NewRemoteHost', ''),
       ('NewExternalPort', '$externalPort'),
@@ -278,14 +313,30 @@ class UpnpGateway implements MappingClient {
     required Duration lifetime,
   }) async {
     var lease = _permanentLeasesOnly ? 0 : lifetime.inSeconds;
-    var external = suggestedExternalPort;
-    var conflicts = 0;
     var leaseFallbackUsed = false;
-    for (;;) {
+    var step = 0; // candidate external port = suggested + 10 * step
+    while (true) {
+      final external = suggestedExternalPort + 10 * step;
+      if (external > 65535 || step >= _maxPortCandidates) {
+        throw MappingException(
+          'no free external port near $suggestedExternalPort',
+          code: 718,
+        );
+      }
+      // Several PCs may share this router. Some firmware silently overwrites
+      // a foreign entry instead of answering 718, so look first and never
+      // touch a mapping that belongs to somebody else.
+      if (await _entryState(protocol, external, internalPort) ==
+          _EntryState.foreign) {
+        step++;
+        continue;
+      }
       try {
         await _addPortMapping(protocol, external, internalPort, lease);
         return MappingGrant(
-            externalPort: external, lifetime: Duration(seconds: lease));
+          externalPort: external,
+          lifetime: Duration(seconds: lease),
+        );
       } on MappingException catch (e) {
         final code = e.code;
         // 725 OnlyPermanentLeasesSupported (402/501 on some firmware for the
@@ -299,14 +350,46 @@ class UpnpGateway implements MappingClient {
           continue;
         }
         // 718 ConflictInMappingEntry: another host owns that external port.
-        if (code == 718 && conflicts < 4) {
-          conflicts++;
-          external = suggestedExternalPort + 10 * conflicts;
-          if (external > 65535) rethrow;
+        if (code == 718) {
+          step++;
           continue;
         }
         rethrow;
       }
+    }
+  }
+
+  /// Who owns `protocol externalPort` on the router, via
+  /// GetSpecificPortMappingEntry. Routers without the action (401/602/404…)
+  /// or with any other fault yield [_EntryState.unknown], and the caller falls
+  /// back to plain AddPortMapping + 718 handling.
+  Future<_EntryState> _entryState(
+    MappingProtocol protocol,
+    int externalPort,
+    int internalPort,
+  ) async {
+    if (_getSpecificUnsupported) return _EntryState.unknown;
+    try {
+      final doc = await _call('GetSpecificPortMappingEntry', [
+        ('NewRemoteHost', ''),
+        ('NewExternalPort', '$externalPort'),
+        ('NewProtocol', protocol == MappingProtocol.tcp ? 'TCP' : 'UDP'),
+      ]);
+      final client = doc.textOf('NewInternalClient') ?? '';
+      final port = int.tryParse(doc.textOf('NewInternalPort') ?? '');
+      if (client.isEmpty && port == null) return _EntryState.unknown;
+      return client == localAddress.address && port == internalPort
+          ? _EntryState.ours
+          : _EntryState.foreign;
+    } on MappingException catch (e) {
+      final code = e.code;
+      // 714 NoSuchEntryInArray / 713 SpecifiedArrayIndexInvalid: free.
+      if (code == 714 || code == 713) return _EntryState.free;
+      if (code == 401 || code == 602 || code == 404 || code == 405) {
+        _getSpecificUnsupported = true;
+      }
+      if (code == null) rethrow; // transport failure: let the caller see it
+      return _EntryState.unknown;
     }
   }
 
@@ -343,7 +426,8 @@ class UpnpDiscovery {
     this.ssdpTimeout = const Duration(seconds: 3),
     this.httpTimeout = const Duration(seconds: 5),
     this.allowLoopback = false,
-  }) : multicastAddress = multicastAddress ?? InternetAddress('239.255.255.250');
+  }) : multicastAddress =
+           multicastAddress ?? InternetAddress('239.255.255.250');
 
   final List<LocalInterface> interfaces;
 
@@ -389,19 +473,22 @@ class UpnpDiscovery {
 
     void tryLocation(Uri location, InternetAddress responder) {
       active++;
-      _probeLocation(location, responder).then((gateway) {
-        if (gateway == null) return;
-        if (winner.isCompleted) {
-          gateway.close();
-        } else {
-          winner.complete(gateway);
-        }
-      }).catchError((Object e) {
-        _log.d('location probe failed: $e');
-      }).whenComplete(() {
-        active--;
-        maybeFinish();
-      });
+      _probeLocation(location, responder)
+          .then((gateway) {
+            if (gateway == null) return;
+            if (winner.isCompleted) {
+              gateway.close();
+            } else {
+              winner.complete(gateway);
+            }
+          })
+          .catchError((Object e) {
+            _log.d('location probe failed: $e');
+          })
+          .whenComplete(() {
+            active--;
+            maybeFinish();
+          });
     }
 
     void onDatagram(Datagram d) {
@@ -441,8 +528,13 @@ class UpnpDiscovery {
         try {
           // Pin outgoing multicast to this interface (IP_MULTICAST_IF);
           // without it the routing table picks one and VPNs can win.
-          socket.setRawOption(RawSocketOption(RawSocketOption.levelIPv4,
-              RawSocketOption.IPv4MulticastInterface, local.rawAddress));
+          socket.setRawOption(
+            RawSocketOption(
+              RawSocketOption.levelIPv4,
+              RawSocketOption.IPv4MulticastInterface,
+              local.rawAddress,
+            ),
+          );
         } on Object {
           // Not supported everywhere; the routing table decides then.
         }
@@ -492,15 +584,27 @@ class UpnpDiscovery {
   Future<InternetAddress?> _localAddressToward(Uri url) async {
     final router = InternetAddress.tryParse(url.host);
     if (router == null) return null;
-    final candidates = <InternetAddress>[
-      for (final i in interfaces)
-        for (final a in i.addresses)
-          if (a.type == InternetAddressType.IPv4 && !isVirtualInterfaceName(i.name)) a,
-    ]..sort((a, b) => commonPrefixBits(router, b).compareTo(commonPrefixBits(router, a)));
+    final candidates =
+        <InternetAddress>[
+          for (final i in interfaces)
+            for (final a in i.addresses)
+              if (a.type == InternetAddressType.IPv4 &&
+                  !isVirtualInterfaceName(i.name))
+                a,
+        ]..sort(
+          (a, b) => commonPrefixBits(
+            router,
+            b,
+          ).compareTo(commonPrefixBits(router, a)),
+        );
     for (final candidate in candidates.take(3)) {
       try {
-        final socket = await Socket.connect(url.host, url.hasPort ? url.port : 80,
-            sourceAddress: candidate, timeout: const Duration(seconds: 2));
+        final socket = await Socket.connect(
+          url.host,
+          url.hasPort ? url.port : 80,
+          sourceAddress: candidate,
+          timeout: const Duration(seconds: 2),
+        );
         socket.destroy();
         return candidate;
       } on Object {
@@ -510,21 +614,28 @@ class UpnpDiscovery {
     return null;
   }
 
-  Future<UpnpGateway?> _probeLocation(Uri location, InternetAddress responder) async {
+  Future<UpnpGateway?> _probeLocation(
+    Uri location,
+    InternetAddress responder,
+  ) async {
     final http = UpnpHttp(timeout: httpTimeout);
     UpnpGateway? keep;
     try {
       final description = await http.get(location);
       if (description.status != 200) return null;
-      final services = parseIgdDescription(description.body, location,
-          allowLoopback: allowLoopback);
+      final services = parseIgdDescription(
+        description.body,
+        location,
+        allowLoopback: allowLoopback,
+      );
       if (services.isEmpty) return null;
       final locals = <InternetAddress>[
         for (final i in interfaces)
           for (final a in i.addresses)
             if (a.type == InternetAddressType.IPv4) a,
       ];
-      final local = await _localAddressToward(location) ??
+      final local =
+          await _localAddressToward(location) ??
           pickLocalFor(responder, locals);
       if (local == null) return null;
 

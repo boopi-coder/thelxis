@@ -49,9 +49,9 @@ class ConnectivityService implements Connectivity {
     PortMapper? mapper,
     Clock? clock,
     this.allowLoopbackRouters = false,
-  })  : _mapper = mapper ?? PortMapper(),
-        _clock = clock ?? DateTime.now,
-        _grants = TurnGrantStore(clock: clock);
+  }) : _mapper = mapper ?? PortMapper(),
+       _clock = clock ?? DateTime.now,
+       _grants = TurnGrantStore(clock: clock);
 
   final ConnectivityConfig config;
 
@@ -64,12 +64,14 @@ class ConnectivityService implements Connectivity {
   final Clock _clock;
   final TurnGrantStore _grants;
 
-  final ValueNotifier<ReachabilityReport> _report =
-      ValueNotifier(const ReachabilityReport());
+  final ValueNotifier<ReachabilityReport> _report = ValueNotifier(
+    const ReachabilityReport(),
+  );
 
   bool _running = false;
   bool _portMapping = false;
   bool _listening = false;
+  ManualForwarding? _manual;
 
   LocalAddresses _locals = const LocalAddresses();
   DateTime _lastScan = DateTime.fromMillisecondsSinceEpoch(0);
@@ -93,56 +95,62 @@ class ConnectivityService implements Connectivity {
   ValueListenable<ReachabilityReport> get report => _report;
 
   @override
-  Future<void> start({required bool portMapping}) => _guarded('start', () async {
-        _portMapping = portMapping;
-        if (_running) {
-          if (_turn?.isRunning != true) await _startTurn(); // a busy port may be free now
-        } else {
-          _running = true;
-          await _scanAsBaseline();
+  Future<void> start({required bool portMapping}) => _guarded(
+    'start',
+    () async {
+      _portMapping = portMapping;
+      if (_running) {
+        // A busy port may be free now.
+        if (_turn?.isRunning != true) {
           await _startTurn();
-          _watchTimer = Timer.periodic(config.networkWatchInterval, (_) {
-            _guarded('network watch', _watchNetwork);
-          });
         }
-        _publish(); // LAN addresses and TURN are usable before the router answers
-        if (portMapping) {
-          if (_outcome == null) await _establish();
-        } else {
-          await _dropMapping(unmap: true);
-        }
-        _scheduleRenewal();
-        _publish();
-      });
+      } else {
+        _running = true;
+        await _scanAsBaseline();
+        await _startTurn();
+        _watchTimer = Timer.periodic(config.networkWatchInterval, (_) {
+          _guarded('network watch', _watchNetwork);
+        });
+      }
+      _publish(); // LAN addresses and TURN are usable before the router answers
+      if (portMapping) {
+        if (_outcome == null) await _establish();
+      } else {
+        await _dropMapping(unmap: true);
+      }
+      _scheduleRenewal();
+      _publish();
+    },
+  );
 
   @override
   Future<void> stop() => _guarded('stop', () async {
-        _renewTimer?.cancel();
-        _renewTimer = null;
-        _watchTimer?.cancel();
-        _watchTimer = null;
-        await _dropMapping(unmap: true);
-        await _turn?.stop();
-        _grants.clear();
-        _running = false;
-        _portMapping = false;
-        _turnErrors = const [];
-        _locals = const LocalAddresses();
-        _ipv4Signature = '';
-        _publish();
-      });
+    _renewTimer?.cancel();
+    _renewTimer = null;
+    _watchTimer?.cancel();
+    _watchTimer = null;
+    await _dropMapping(unmap: true);
+    await _turn?.stop();
+    _grants.clear();
+    _running = false;
+    _portMapping = false;
+    _turnErrors = const [];
+    _locals = const LocalAddresses();
+    _ipv4Signature = '';
+    _publish();
+  });
 
   @override
   Future<void> refresh() => _guarded('refresh', () async {
-        if (!_running) return;
-        await _scanAsBaseline();
-        if (_turn?.isRunning != true) await _startTurn();
-        if (_portMapping) {
-          await _establish();
-          _scheduleRenewal();
-        }
-        _publish();
-      });
+    if (!_running) return;
+    await _scanAsBaseline();
+    if (_turn?.isRunning != true) await _startTurn();
+    if (_portMapping) {
+      await _establish();
+      _scheduleRenewal();
+    }
+    _publish();
+  });
 
   @override
   void setListening(bool listening) {
@@ -152,7 +160,14 @@ class ConnectivityService implements Connectivity {
   }
 
   @override
+  void setManualForwarding(ManualForwarding? forwarding) {
+    _manual = forwarding;
+    if (_running) _publish();
+  }
+
+  @override
   List<String> advertisedAddresses() {
+    if (!_running) return const [];
     final r = _report.value;
     final port = config.signalingPort;
     final out = <String>[];
@@ -163,6 +178,15 @@ class ConnectivityService implements Connectivity {
     final external = r.externalIPv4;
     final mappedPort = _signalingMapping(r)?.externalPort;
     final routerExternal = r.externalIsPublic ? external : null;
+    // Hand-made forwarding is the user's explicit statement of how to reach
+    // this machine, so it leads.
+    final manual = _manual;
+    if (manual != null) {
+      final host = manual.externalHost ?? routerExternal;
+      if (host != null && host.isNotEmpty) {
+        add(formatHostPort(host, manual.signalingTcp));
+      }
+    }
     if (routerExternal != null && mappedPort != null) {
       add(formatHostPort(routerExternal, mappedPort));
     }
@@ -187,14 +211,19 @@ class ConnectivityService implements Connectivity {
   TurnGrant? issueTurnGrant({
     String? dialedAddress,
     Duration ttl = const Duration(hours: 12),
+    bool gateway = false,
   }) {
     final turn = _turn;
     if (!_running || turn == null || !turn.isRunning) return null;
-    final record = _grants.issue(ttl: ttl);
+    final record = _grants.issue(ttl: ttl, gateway: gateway);
 
     var udpPort = turn.boundUdpPort ?? config.turnUdpPort;
     var tcpPort = turn.boundTcpPort ?? config.turnTcpPort;
-    if (_dialedViaExternalMapping(dialedAddress)) {
+    final manual = _manual;
+    if (_dialedViaManualForwarding(dialedAddress)) {
+      udpPort = manual!.turnUdp;
+      tcpPort = manual.turnTcp;
+    } else if (_dialedViaExternalMapping(dialedAddress)) {
       final r = _report.value;
       for (final m in r.mappings) {
         if (m.protocol == MappingProtocol.udp && m.internalPort == udpPort) {
@@ -252,15 +281,29 @@ class ConnectivityService implements Connectivity {
         mapping.externalPort == parsed.port;
   }
 
+  /// The dialer came in from outside on the hand-forwarded signaling port.
+  /// A dialed address that is one of ours (LAN, loopback) never qualifies,
+  /// even when the manual port happens to equal the local one.
+  bool _dialedViaManualForwarding(String? dialed) {
+    final manual = _manual;
+    final parsed = parseHostPort(dialed);
+    if (manual == null || parsed == null) return false;
+    if (parsed.port != manual.signalingTcp) return false;
+    final ip = InternetAddress.tryParse(parsed.host);
+    if (ip == null) return true; // a DNS name: reached us from outside
+    return !_locals.isLocal(ip) && !isLanAddress(ip);
+  }
+
   Future<void> _scan() async {
     _locals = await scanLocalAddresses(interfaceLister);
     _lastScan = _clock();
+    await _turn?.setUdpIpv6Addresses(_locals.globalIPv6);
   }
 
   String _signatureOf(LocalAddresses a) => [
-        ...a.lanIPv4.map((x) => x.address),
-        ...a.publicIPv4.map((x) => x.address),
-      ].join(',');
+    ...a.lanIPv4.map((x) => x.address),
+    ...a.publicIPv4.map((x) => x.address),
+  ].join(',');
 
   /// Scan used by start/refresh: the result becomes the new baseline for
   /// change detection.
@@ -303,9 +346,11 @@ class ConnectivityService implements Connectivity {
       tcpPort: config.turnTcpPort,
       relayAddress: _relayAddress,
       isLocalPeer: _isLocalPeer,
+      isGatewayPeer: _isGatewayPeer,
       clock: _clock,
     );
     final result = await turn.start();
+    await turn.setUdpIpv6Addresses(_locals.globalIPv6);
     _turnErrors = result.errors;
     for (final e in result.errors) {
       _log.w(e);
@@ -322,8 +367,19 @@ class ConnectivityService implements Connectivity {
 
   /// Is [peer] an address of this machine? A miss re-reads the interfaces
   /// (rate limited) so a freshly joined network does not cause spurious 403s.
-  Future<bool> _isLocalPeer(InternetAddress peer) async {
-    if (_locals.isLocal(peer)) return true;
+  Future<bool> _isLocalPeer(InternetAddress peer) =>
+      _checkPeer(peer, (l) => l.isLocal(peer));
+
+  /// Office-gateway grants: private addresses in our directly connected
+  /// subnets (PROTOCOL.md §11).
+  Future<bool> _isGatewayPeer(InternetAddress peer) =>
+      _checkPeer(peer, (l) => l.isInDirectPrivateSubnet(peer));
+
+  Future<bool> _checkPeer(
+    InternetAddress peer,
+    bool Function(LocalAddresses) test,
+  ) async {
+    if (test(_locals)) return true;
     if (_clock().difference(_lastScan) < const Duration(seconds: 5)) {
       return false;
     }
@@ -331,7 +387,7 @@ class ConnectivityService implements Connectivity {
     _publish();
     // A new IPv4 set also means the router mapping may be stale.
     _guarded('network change', _applyNetworkChange);
-    return _locals.isLocal(peer);
+    return test(_locals);
   }
 
   List<MappingTarget> _targets() {
@@ -440,7 +496,10 @@ class ConnectivityService implements Connectivity {
     final outcome = _outcome;
     final mappings = outcome == null
         ? const <PortMapping>[]
-        : [for (final m in outcome.mappings) m.toPortMapping(outcome.client!.method)];
+        : [
+            for (final m in outcome.mappings)
+              m.toPortMapping(outcome.client!.method),
+          ];
 
     // Router WAN address wins; otherwise an address assigned straight to an
     // interface (VPS, bridged modem) counts as the external one.
@@ -455,14 +514,25 @@ class ConnectivityService implements Connectivity {
     if (_portMapping) {
       if (_locals.lanIPv4.isEmpty && _locals.publicIPv4.isEmpty) {
         problems.add('No local IPv4 network found');
-      } else if (!_gatewayFound && outcome == null && _locals.lanIPv4.isNotEmpty) {
+      } else if (!_gatewayFound &&
+          outcome == null &&
+          _locals.lanIPv4.isNotEmpty &&
+          _manual == null) {
+        // With manual forwarding configured, a missing UPnP router is
+        // expected, not a problem.
         problems.add('No UPnP/NAT-PMP/PCP router found');
       }
       problems.addAll(_mappingProblems);
     }
     final routerExternal = _externalAddress?.address;
     if (cgnat && routerExternal != null) {
-      problems.add(_cgnatMessage(routerExternal));
+      problems.add(
+        _manual == null
+            ? _cgnatMessage(routerExternal)
+            : "Router's external address $routerExternal looks like a shared "
+                  'or private address; manual forwarding only works if the '
+                  'provider also forwards to this router',
+      );
     }
     if (_locals.lanIPv4.isEmpty &&
         _locals.publicIPv4.isEmpty &&
@@ -477,8 +547,10 @@ class ConnectivityService implements Connectivity {
       mappingMethod: outcome?.client?.method,
       externalIPv4: external,
       externalIsPublic: isPublic,
-      externalIsDirect: external != null &&
+      externalIsDirect:
+          external != null &&
           _locals.publicIPv4.any((a) => a.address == external),
+      manualForwarding: _manual != null,
       cgnat: cgnat,
       mappings: mappings,
       listening: _listening,

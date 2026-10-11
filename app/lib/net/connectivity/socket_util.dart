@@ -16,7 +16,11 @@ Datagram? safeReceive(RawDatagramSocket socket) {
 
 /// Sends [data]; false when the OS refused it.
 bool safeSend(
-    RawDatagramSocket socket, List<int> data, InternetAddress to, int port) {
+  RawDatagramSocket socket,
+  List<int> data,
+  InternetAddress to,
+  int port,
+) {
   try {
     return socket.send(data, to, port) > 0;
   } on SocketException {

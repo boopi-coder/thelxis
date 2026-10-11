@@ -19,7 +19,12 @@ class TurnGrantRecord {
     required this.username,
     required this.password,
     required this.expiresAt,
+    this.gateway = false,
   });
+
+  /// Office-gateway grant (PROTOCOL.md §11): may also relay to private
+  /// addresses in this machine's own subnets.
+  final bool gateway;
 
   final String username;
   final String password;
@@ -33,7 +38,10 @@ class TurnGrantRecord {
   Uint8List longTermKeyFor(String realm) {
     if (_key == null || _keyRealm != realm) {
       _key = longTermKey(
-          username.codeUnits, realm.codeUnits, password.codeUnits);
+        username.codeUnits,
+        realm.codeUnits,
+        password.codeUnits,
+      );
       _keyRealm = realm;
     }
     return _key!;
@@ -52,12 +60,13 @@ class TurnGrantStore {
   List<int> _randomBytes(int n) =>
       List<int>.generate(n, (_) => _random.nextInt(256));
 
-  TurnGrantRecord issue({required Duration ttl}) {
+  TurnGrantRecord issue({required Duration ttl, bool gateway = false}) {
     purge();
     final record = TurnGrantRecord(
       username: b64uEncode(_randomBytes(16)),
       password: b64uEncode(_randomBytes(24)),
       expiresAt: _clock().add(ttl),
+      gateway: gateway,
     );
     _byUsername[record.username] = record;
     return record;

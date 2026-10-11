@@ -229,4 +229,39 @@ void main() {
     await mapper.remove(outcome);
     expect(igd.mappings, isEmpty);
   });
+
+  test(
+    'mappings keep one offset when another PC owns the first port',
+    () async {
+      final igd = await FakeIgd.start();
+      addTearDown(igd.close);
+      igd.preload('TCP', 47100); // a second PC behind the same router
+      igd.overwriteForeign = true;
+      final mapper = PortMapper(
+        probes: [
+          MappingProbe(MappingMethod.upnp, (ctx) {
+            return UpnpDiscovery(
+              interfaces: [
+                LocalInterface('lo0', [InternetAddress.loopbackIPv4]),
+              ],
+              multicastAddress: InternetAddress.loopbackIPv4,
+              ssdpPort: igd.ssdpPort,
+              ssdpTimeout: const Duration(seconds: 2),
+              allowLoopback: true,
+            ).discover();
+          }),
+        ],
+      );
+
+      final outcome = await mapper.establish(_ctx(), _targets);
+
+      expect(
+        outcome.mappings.map(
+          (m) => '${m.protocol.name}:${m.internalPort}->${m.externalPort}',
+        ),
+        ['tcp:47100->47110', 'udp:47100->47110', 'tcp:47101->47111'],
+      );
+      expect(igd.entries['TCP:47100']!.client, '192.168.1.99');
+    },
+  );
 }

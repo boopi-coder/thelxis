@@ -51,7 +51,10 @@ class XmlNode {
 const int _maxDepth = 64;
 
 bool _isNameStart(int c) =>
-    (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a) || c == 0x5f || c == 0x3a;
+    (c >= 0x41 && c <= 0x5a) ||
+    (c >= 0x61 && c <= 0x7a) ||
+    c == 0x5f ||
+    c == 0x3a;
 
 bool _isNameChar(int c) =>
     _isNameStart(c) || (c >= 0x30 && c <= 0x39) || c == 0x2d || c == 0x2e;
@@ -164,11 +167,15 @@ String _decodeEntities(String s) {
     }
     if (body.startsWith('#x')) {
       final cp = int.tryParse(body.substring(2), radix: 16);
-      return cp == null || cp > 0x10ffff ? m.group(0)! : String.fromCharCode(cp);
+      return cp == null || cp > 0x10ffff
+          ? m.group(0)!
+          : String.fromCharCode(cp);
     }
     if (body.startsWith('#')) {
       final cp = int.tryParse(body.substring(1));
-      return cp == null || cp > 0x10ffff ? m.group(0)! : String.fromCharCode(cp);
+      return cp == null || cp > 0x10ffff
+          ? m.group(0)!
+          : String.fromCharCode(cp);
     }
     return m.group(0)!;
   });

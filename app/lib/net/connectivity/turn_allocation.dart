@@ -38,7 +38,7 @@ int _peerKey(InternetAddress address, int port) =>
 
 class TurnChannel {
   TurnChannel(this.number, this.address, this.port, this.expiresAt)
-      : peerKey = _peerKey(address, port);
+    : peerKey = _peerKey(address, port);
 
   final int number;
   final InternetAddress address;
@@ -91,7 +91,11 @@ class TurnAllocation {
 
   /// RFC 5766 §11.2: a number maps to one peer and a peer to one number.
   ChannelBindResult bindChannel(
-      int number, InternetAddress peer, int port, DateTime now) {
+    int number,
+    InternetAddress peer,
+    int port,
+    DateTime now,
+  ) {
     final key = _peerKey(peer, port);
     final byNumber = channelByNumber(number, now);
     if (byNumber != null && byNumber.peerKey != key) {
@@ -104,7 +108,8 @@ class TurnAllocation {
       return ChannelBindResult.peerAlreadyBound;
     }
     final expiry = now.add(turnChannelLifetime);
-    final channel = byNumber ?? TurnChannel(number, unmapIpv4(peer), port, expiry);
+    final channel =
+        byNumber ?? TurnChannel(number, unmapIpv4(peer), port, expiry);
     channel.expiresAt = expiry;
     _channelsByNumber[number] = channel;
     _channelsByPeer[key] = channel;

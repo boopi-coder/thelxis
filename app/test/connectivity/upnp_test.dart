@@ -299,6 +299,109 @@ void main() {
       expect(leases, ['3600', '0', '0']);
     });
 
+    Future<MappingGrant> mapTcp({int port = 47100}) => gateway!.map(
+      protocol: MappingProtocol.tcp,
+      internalPort: port,
+      suggestedExternalPort: port,
+      lifetime: const Duration(hours: 1),
+    );
+
+    List<String> actions() => igd.calls.map((c) => c.action).toList();
+
+    test(
+      'looks before it writes: a free port is mapped after a query',
+      () async {
+        gateway = await _discovery(igd).discover();
+        await mapTcp();
+        final calls = igd.calls.where(
+          (c) => c.action != 'GetExternalIPAddress',
+        );
+        expect(calls.map((c) => c.action), [
+          'GetSpecificPortMappingEntry',
+          'AddPortMapping',
+        ]);
+        expect(calls.first.args, {
+          'NewRemoteHost': '',
+          'NewExternalPort': '47100',
+          'NewProtocol': 'TCP',
+        });
+      },
+    );
+
+    test('our own entry is reused and refreshed in place', () async {
+      igd.preload('TCP', 47100, client: '127.0.0.1', internalPort: 47100);
+      gateway = await _discovery(igd).discover();
+      final g = await mapTcp();
+      expect(g.externalPort, 47100);
+      expect(actions().where((a) => a == 'AddPortMapping'), hasLength(1));
+    });
+
+    test(
+      'a foreign entry is never touched, even on an overwriting router',
+      () async {
+        igd.overwriteForeign = true;
+        igd.preload('TCP', 47100);
+        gateway = await _discovery(igd).discover();
+        final g = await mapTcp();
+        expect(g.externalPort, 47110);
+        expect(igd.entries['TCP:47100']!.client, '192.168.1.99');
+        expect(igd.entries['TCP:47110']!.client, '127.0.0.1');
+        final adds = igd.calls.where((c) => c.action == 'AddPortMapping');
+        expect(adds.map((c) => c.args['NewExternalPort']), ['47110']);
+      },
+    );
+
+    test('several foreign entries push the mapping further out', () async {
+      igd.overwriteForeign = true;
+      igd.preload('TCP', 47100);
+      igd.preload('TCP', 47110, client: '192.168.1.98');
+      gateway = await _discovery(igd).discover();
+      expect((await mapTcp()).externalPort, 47120);
+      // The same port number on the other protocol is a different entry.
+      igd.preload('TCP', 47100, client: '192.168.1.99');
+      final udp = await gateway!.map(
+        protocol: MappingProtocol.udp,
+        internalPort: 47100,
+        suggestedExternalPort: 47100,
+        lifetime: const Duration(hours: 1),
+      );
+      expect(udp.externalPort, 47100);
+    });
+
+    test('five foreign candidates in a row: give up without writing', () async {
+      igd.overwriteForeign = true;
+      for (var i = 0; i < 5; i++) {
+        igd.preload('TCP', 47100 + 10 * i);
+      }
+      gateway = await _discovery(igd).discover();
+      await expectLater(mapTcp(), throwsA(isA<MappingException>()));
+      expect(actions(), isNot(contains('AddPortMapping')));
+      expect(
+        igd.entries.values.every((e) => e.client == '192.168.1.99'),
+        isTrue,
+      );
+    });
+
+    for (final fault in [401, 602]) {
+      test(
+        'a router without GetSpecificPortMappingEntry ($fault) falls back to plain AddPortMapping',
+        () async {
+          igd.supportsGetSpecific = false;
+          igd.getSpecificFault = fault;
+          igd.preload('TCP', 47100); // honest router: 718 tells us
+          gateway = await _discovery(igd).discover();
+          final g = await mapTcp();
+          expect(g.externalPort, 47110);
+          await mapTcp(port: 47101);
+          expect(
+            actions().where((a) => a == 'GetSpecificPortMappingEntry'),
+            hasLength(1),
+            reason: 'asked once, then remembered as unsupported',
+          );
+        },
+      );
+    }
+
     test('error 718 moves the external port by 10, 20, ...', () async {
       igd.addPortMappingErrors.addAll([718, 718]);
       gateway = await _discovery(igd).discover();

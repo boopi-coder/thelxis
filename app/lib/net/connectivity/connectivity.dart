@@ -17,6 +17,33 @@ abstract final class ThelxisPorts {
   static const int discoveryUdp = 47102;
 }
 
+/// Public STUN servers (PROTOCOL.md §4.3). Used only when the user's
+/// "Public STUN" setting is on (default on); they learn IP:port, never data.
+abstract final class PublicStun {
+  static const List<String> urls = [
+    'stun:stun.l.google.com:19302',
+    'stun:stun.cloudflare.com:3478',
+  ];
+}
+
+/// Ports the user forwarded by hand on the router (Settings → Connectivity),
+/// for routers without UPnP/PCP/NAT-PMP and for several PCs behind one IP.
+class ManualForwarding {
+  const ManualForwarding({
+    this.externalHost,
+    required this.signalingTcp,
+    required this.turnUdp,
+    required this.turnTcp,
+  });
+
+  /// Public IP or (dynamic) DNS name of the router. Null → use the router's
+  /// external address when known.
+  final String? externalHost;
+  final int signalingTcp;
+  final int turnUdp;
+  final int turnTcp;
+}
+
 enum MappingMethod { upnp, natPmp, pcp }
 
 enum MappingProtocol { tcp, udp }
@@ -46,6 +73,7 @@ class ReachabilityReport {
     this.externalIPv4,
     this.externalIsPublic = false,
     this.externalIsDirect = false,
+    this.manualForwarding = false,
     this.cgnat = false,
     this.mappings = const [],
     this.listening = false,
@@ -70,6 +98,9 @@ class ReachabilityReport {
   /// bridged modem) — reachable without any router mapping.
   final bool externalIsDirect;
 
+  /// The user configured manual port forwarding (unverifiable from inside).
+  final bool manualForwarding;
+
   /// The router's WAN address is itself private/shared → carrier-grade NAT;
   /// inbound IPv4 is impossible without a third party.
   final bool cgnat;
@@ -86,11 +117,12 @@ class ReachabilityReport {
 
   /// True when a peer on the internet can most likely reach us over IPv4.
   bool get reachableIPv4 =>
-      externalIsPublic &&
-      (externalIsDirect ||
-          mappings.any((m) =>
-              m.protocol == MappingProtocol.tcp &&
-              m.internalPort == ThelxisPorts.signalingTcp));
+      manualForwarding ||
+      (externalIsPublic &&
+          (externalIsDirect ||
+              mappings.any((m) =>
+                  m.protocol == MappingProtocol.tcp &&
+                  m.internalPort == ThelxisPorts.signalingTcp)));
 
   bool get reachableIPv6 => globalIPv6.isNotEmpty;
 }
@@ -141,6 +173,11 @@ abstract class Connectivity {
   /// Core reports whether its signaling listener is currently bound.
   void setListening(bool listening);
 
+  /// Applies (or clears with null) manual port forwarding: advertised
+  /// addresses gain `<externalHost>:<signalingTcp>` and grants for dialers
+  /// that came in on it carry the manual TURN ports.
+  void setManualForwarding(ManualForwarding? forwarding);
+
   /// Addresses of our signaling port to advertise (PROTOCOL.md §3), best
   /// first: "ip:port" or "[v6]:port".
   List<String> advertisedAddresses();
@@ -150,9 +187,13 @@ abstract class Connectivity {
   /// `dialed` field of the dialer's hello: when it matches our external
   /// mapping the grant carries the *external* TURN ports, otherwise the local
   /// ones.
+  ///
+  /// [gateway] grants (office gateway, PROTOCOL.md §11) may also relay to
+  /// private RFC 1918 addresses inside this machine's own IPv4 subnets.
   TurnGrant? issueTurnGrant({
     String? dialedAddress,
     Duration ttl = const Duration(hours: 12),
+    bool gateway = false,
   });
 
   void revokeTurnGrant(TurnGrant grant);

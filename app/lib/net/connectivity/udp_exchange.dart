@@ -30,7 +30,9 @@ Future<Uint8List?> udpRequest({
   RawDatagramSocket socket;
   try {
     socket = await RawDatagramSocket.bind(
-        bindAddress ?? InternetAddress.anyIPv4, 0);
+      bindAddress ?? InternetAddress.anyIPv4,
+      0,
+    );
   } on SocketException {
     return null;
   }

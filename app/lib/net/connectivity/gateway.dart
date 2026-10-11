@@ -13,7 +13,9 @@ const Logger _log = Logger('gateway');
 /// Runs [executable] and returns stdout, or null on failure/timeout. Injected
 /// in tests.
 typedef CommandRunner = Future<String?> Function(
-    String executable, List<String> arguments);
+  String executable,
+  List<String> arguments,
+);
 
 Future<String?> runCommand(String executable, List<String> arguments) async {
   Process process;
@@ -65,12 +67,16 @@ List<InternetAddress> parseProcNetRoute(String content) {
     if (cols.length < 3 || cols[1] != '00000000') continue;
     final value = int.tryParse(cols[2], radix: 16);
     if (value == null || value == 0) continue;
-    result.add(InternetAddress.fromRawAddress(Uint8List.fromList([
-      value & 0xff,
-      (value >> 8) & 0xff,
-      (value >> 16) & 0xff,
-      (value >> 24) & 0xff,
-    ])));
+    result.add(
+      InternetAddress.fromRawAddress(
+        Uint8List.fromList([
+          value & 0xff,
+          (value >> 8) & 0xff,
+          (value >> 16) & 0xff,
+          (value >> 24) & 0xff,
+        ]),
+      ),
+    );
   }
   return result;
 }
@@ -81,7 +87,9 @@ List<InternetAddress> parseProcNetRoute(String content) {
 List<InternetAddress> parseWindowsDefaultGateways(String output) {
   final rows = <({InternetAddress gateway, int metric})>[];
   final row = RegExp(
-      r'^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+(\S+)\s+(\S+)\s+(\d+)', multiLine: true);
+    r'^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+(\S+)\s+(\S+)\s+(\d+)',
+    multiLine: true,
+  );
   for (final m in row.allMatches(output)) {
     final a = tryParseIpv4(m.group(1));
     if (a != null) rows.add((gateway: a, metric: int.parse(m.group(3)!)));
@@ -98,7 +106,8 @@ List<InternetAddress> guessGateways(Iterable<InternetAddress> locals) {
     final raw = l.rawAddress;
     if (raw.length != 4 || classifyIpv4Bytes(raw) != Ipv4Kind.private) continue;
     final guess = InternetAddress.fromRawAddress(
-        Uint8List.fromList([raw[0], raw[1], raw[2], 1]));
+      Uint8List.fromList([raw[0], raw[1], raw[2], 1]),
+    );
     if (guess != l) result.add(guess);
   }
   return result;
@@ -122,7 +131,12 @@ Future<List<InternetAddress>> readOsDefaultGateways({
       return out == null ? const [] : parseWindowsDefaultGateways(out);
     }
     if (os == 'linux' || os == 'android') {
-      for (final exe in const ['ip', '/sbin/ip', '/usr/sbin/ip', '/system/bin/ip']) {
+      for (final exe in const [
+        'ip',
+        '/sbin/ip',
+        '/usr/sbin/ip',
+        '/system/bin/ip',
+      ]) {
         final out = await run(exe, ['route', 'show', 'default']);
         if (out != null) {
           final parsed = parseLinuxDefaultGateways(out);
