@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../core/identity.dart';
 import '../core/log.dart';
+import '../l10n/strings.dart';
 import '../protocol/signaling_messages.dart';
 import 'handshake.dart';
 import 'ws_peer.dart';
@@ -254,10 +255,7 @@ class SignalingChannel {
     if (_ended) return;
     if (!ok) {
       _log.w('SDP signature verification failed');
-      _events.add(const SignatureFailure(
-        'The connection setup message could not be verified. Someone may be '
-        'intercepting this connection.',
-      ));
+      _events.add(SignatureFailure(S.current.t('warn.sig.body')));
       bye('error');
       return;
     }

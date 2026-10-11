@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart' show RTCDataChannel;
 
 import '../net/peer_identity.dart';
 import 'link_stats.dart';
@@ -38,6 +39,17 @@ abstract class SessionBase extends ChangeNotifier {
 
   /// Live link statistics (RTT, fps, bitrate, loss, codec, path).
   final ValueNotifier<LinkStats> stats = ValueNotifier(LinkStats.empty);
+
+  final ValueNotifier<RTCDataChannel?> _filesChannel = ValueNotifier(null);
+
+  /// The `files` data channel (PROTOCOL.md section 6.4) once it exists; the
+  /// file-transfer module attaches to it. Null before it opens and after the
+  /// session ends.
+  RTCDataChannel? get filesChannel => _filesChannel.value;
+  ValueListenable<RTCDataChannel?> get filesChannelListenable => _filesChannel;
+
+  @protected
+  set filesChannel(RTCDataChannel? channel) => _filesChannel.value = channel;
 
   /// Called once when the session ends, for history and cleanup.
   void Function(SessionBase session)? onEnded;
@@ -86,6 +98,7 @@ abstract class SessionBase extends ChangeNotifier {
   @override
   void dispose() {
     stats.dispose();
+    _filesChannel.dispose();
     super.dispose();
   }
 }

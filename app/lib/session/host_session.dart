@@ -1,15 +1,19 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../core/identity.dart';
 import '../core/log.dart';
 import '../core/settings.dart';
 import '../core/trusted_devices.dart';
+import '../l10n/strings.dart';
 import '../net/handshake.dart';
 import '../net/net_address.dart';
 import '../net/signaling_channel.dart';
 import '../platform/host_platform.dart';
+import '../platform/impl/android_host.dart' show CapturePermissionDenied;
 import '../protocol/control_messages.dart';
 import '../protocol/input_messages.dart';
 import '../protocol/models.dart';
@@ -38,7 +42,8 @@ class HostEnv {
     required this.platform,
     required this.captures,
     required this.requestApproval,
-    required this.onSecurityWarning,
+    required this.onNotice,
+    this.startCapture = ScreenCapture.start,
   });
 
   final AppSettings settings;
@@ -48,11 +53,16 @@ class HostEnv {
   final HostPlatform platform;
   final CaptureRegistry captures;
 
+  /// Starts capturing a display; replaceable in tests.
+  final Future<MediaStream> Function(HostDisplay display, List<HostDisplay> all, {int fps})
+      startCapture;
+
   /// Shows the accept prompt; resolves with the user's decision.
   final Future<ApprovalResult> Function(AcceptRequestPrompt prompt) requestApproval;
 
-  /// Surfaces a security notice (failed SDP signature).
-  final void Function(String title, String message) onSecurityWarning;
+  /// Surfaces a notice the user must see (failed SDP signature, screen
+  /// capture refused).
+  final void Function(String title, String message) onNotice;
 }
 
 /// The controlled side of a session (PROTOCOL.md sections 4 to 6): owns the
@@ -97,6 +107,7 @@ class HostSession extends SessionBase {
   bool _ended = false;
   bool _remoteSet = false;
   bool _captureHeld = false;
+  bool _sharing = false;
   final List<RTCIceCandidate> _pendingCandidates = [];
 
   List<HostDisplay> _displays = const [];
@@ -105,6 +116,7 @@ class HostSession extends SessionBase {
   int _captureFps = 30;
   QualityPreset _quality = QualityPreset.auto;
 
+  Future<void> _mediaOps = Future.value();
   Timer? _authTimer;
   Timer? _restartTimer;
   Timer? _failTimer;
@@ -112,10 +124,36 @@ class HostSession extends SessionBase {
 
   final List<String> chatLog = [];
 
+  // --- test seams (see ViewerSession) ---------------------------------------
+
+  @visibleForTesting
+  Future<({String? local, String? remote})> Function()? debugFingerprints;
+
+  @visibleForTesting
+  void Function(Map<String, dynamic> message)? debugControlTap;
+
+  @visibleForTesting
+  void debugReceiveControl(Map<String, dynamic> json) =>
+      _onControlMessage(RTCDataChannelMessage(jsonEncode(json)));
+
+  /// Feeds an `input`-channel message as if the viewer sent it.
+  @visibleForTesting
+  void debugReceiveInput(Map<String, dynamic> json) =>
+      _onInputMessage(RTCDataChannelMessage(jsonEncode(json)));
+
+  /// Pretends the control channel opened (sends `hello`).
+  @visibleForTesting
+  void debugControlOpened() => _onControlState(RTCDataChannelState.RTCDataChannelOpen);
+
   @override
   bool get isHost => true;
 
   Permissions get permissions => _permissions;
+
+  /// True from the moment the screen is being captured for the viewer until
+  /// capture has fully stopped. The session badge and banner stay visible for
+  /// as long as this is true, whatever the protocol phase says.
+  bool get sharing => _sharing;
   QualityPreset get quality => _quality;
 
   /// Whether the viewer may currently inject input.
@@ -156,11 +194,14 @@ class HostSession extends SessionBase {
 
       final control = await pc.createDataChannel('control', RTCDataChannelInit()..ordered = true);
       final input = await pc.createDataChannel('input', RTCDataChannelInit()..ordered = true);
+      final files = await pc.createDataChannel('files', RTCDataChannelInit()..ordered = true);
       _control = control;
       _inputChannel = input;
+      filesChannel = files;
       control.onDataChannelState = _onControlState;
       control.onMessage = _onControlMessage;
       input.onMessage = _onInputMessage;
+      if (control.state == RTCDataChannelState.RTCDataChannelOpen) _onControlState(control.state!);
 
       final offer = await pc.createOffer(kHostOfferConstraints);
       await pc.setLocalDescription(offer);
@@ -191,7 +232,7 @@ class HostSession extends SessionBase {
         case RemoteBye():
           await end('remote');
         case SignatureFailure(:final message):
-          env.onSecurityWarning('Connection could not be verified', message);
+          env.onNotice(S.current.t('warn.sig.title'), message);
           await end('error');
         case SignalingDetached():
           _log.d('signaling dropped; media continues');
@@ -311,7 +352,11 @@ class HostSession extends SessionBase {
     });
   }
 
-  void _send(ControlMessage m) => unawaited(sendJson(_control, m.toJson()));
+  void _send(ControlMessage m) {
+    final json = m.toJson();
+    debugControlTap?.call(json);
+    unawaited(sendJson(_control, json));
+  }
 
   void _onControlMessage(RTCDataChannelMessage raw) {
     if (_ended) return;
@@ -324,9 +369,9 @@ class HostSession extends SessionBase {
       case ByeMessage():
         unawaited(end('remote'));
       case SelectDisplayMessage(:final id):
-        if (_authorized) unawaited(_selectDisplay(id));
+        if (_authorized) _enqueue(() => _selectDisplay(id));
       case QualityMessage(:final preset):
-        if (_authorized) unawaited(_setQuality(preset));
+        if (_authorized) _enqueue(() => _setQuality(preset));
       case ClipboardMessage(:final text):
         if (_authorized && _permissions.clipboard) unawaited(_clipboard?.applyRemote(text));
       case ChatMessage(:final text):
@@ -345,8 +390,8 @@ class HostSession extends SessionBase {
     _authBusy = true;
     try {
       final pc = _pc;
-      if (pc == null) return;
-      final fps = await readFingerprints(pc);
+      if (pc == null && debugFingerprints == null) return;
+      final fps = await (debugFingerprints?.call() ?? readFingerprints(pc!));
       var decision = await auth.evaluate(
         msg,
         localFingerprint: fps.local,
@@ -407,27 +452,47 @@ class HostSession extends SessionBase {
         permissions: grant.permissions,
       );
     }
-    _send(AuthResultMessage.ok(_permissions, trusted: env.trusted.isTrusted(peer.key)));
+    // Capture first: on Android this shows the system consent dialog, and the
+    // viewer should keep seeing "waiting" rather than an empty picture.
     try {
-      await _startMedia();
+      await _prepareCapture();
+    } on CapturePermissionDenied catch (e) {
+      _log.w('screen capture refused: ${e.message}');
+      env.onNotice(
+        S.current.t('warn.capture.title'),
+        S.current.t('warn.capture.body', {'name': peer.name}),
+      );
+      _authorized = false;
+      _send(const AuthResultMessage.fail('not_allowed'));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await end('denied');
+      return;
     } on Object catch (e, st) {
       _log.e('could not start capture', e, st);
-      _send(const ByeMessage('error'));
+      _authorized = false;
+      _send(const AuthResultMessage.fail('not_allowed'));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
       await end('error');
       return;
     }
+    if (_ended) return;
+    _send(AuthResultMessage.ok(_permissions, trusted: env.trusted.isTrusted(peer.key)));
+    _sendDisplays();
+    if (_permissions.clipboard) await _startClipboard();
     if (!_ended) setPhase(SessionPhase.active);
   }
 
   // --- media -------------------------------------------------------------
 
-  Future<void> _startMedia() async {
+  Future<void> _prepareCapture() async {
     final platform = env.platform;
     if (await platform.permissionStatus(HostPermission.screenCapture) == PermissionStatus.denied) {
       await platform.requestPermission(HostPermission.screenCapture);
     }
     await env.captures.acquire(platform);
     _captureHeld = true;
+    _sharing = true;
+    notifyListeners();
     _displays = await platform.displays();
     if (_displays.isEmpty) throw StateError('No displays');
     _active = _displays.firstWhere((d) => d.primary, orElse: () => _displays.first);
@@ -435,13 +500,11 @@ class HostSession extends SessionBase {
       ..display = _active
       ..enabled = controlEnabled;
     if (_permissions.view) await _captureInto(_active!);
-    _sendDisplays();
-    if (_permissions.clipboard) await _startClipboard();
   }
 
   Future<void> _captureInto(HostDisplay display) async {
     final profile = qualityProfileFor(_quality);
-    final next = await ScreenCapture.start(display, _displays, fps: profile.captureFps);
+    final next = await env.startCapture(display, _displays, fps: profile.captureFps);
     final tracks = next.getVideoTracks();
     if (tracks.isEmpty) {
       await next.dispose();
@@ -466,9 +529,22 @@ class HostSession extends SessionBase {
     }
   }
 
+  /// Capture changes run one after another: overlapping re-captures would
+  /// leak streams and race on the sender.
+  void _enqueue(Future<void> Function() op) {
+    _mediaOps = _mediaOps.then((_) => _ended ? null : op()).catchError((Object e) {
+      _log.w('media operation failed', e);
+    });
+  }
+
   Future<void> _selectDisplay(String id) async {
     final target = _displays.where((d) => d.id == id).firstOrNull;
-    if (target == null || target.id == _active?.id || !_permissions.view) return;
+    if (!ScreenCapture.canRetarget ||
+        target == null ||
+        target.id == _active?.id ||
+        !_permissions.view) {
+      return;
+    }
     _input.releaseAll();
     try {
       await _captureInto(target);
@@ -484,7 +560,9 @@ class HostSession extends SessionBase {
   Future<void> _setQuality(QualityPreset preset) async {
     _quality = preset;
     final profile = qualityProfileFor(preset);
-    if (profile.captureFps != _captureFps && _active != null && _permissions.view) {
+    // Re-capturing would repeat the Android consent dialog, and mobile capture
+    // ignores the requested frame rate anyway; only desktop re-captures.
+    if (ScreenCapture.canRetarget && profile.captureFps != _captureFps && _active != null && _permissions.view) {
       try {
         await _captureInto(_active!);
       } on Object catch (e) {
@@ -589,6 +667,8 @@ class HostSession extends SessionBase {
       _ => 'user',
     });
     await _signalSub?.cancel();
+    // Let the last control message reach the wire before the channel closes.
+    await Future<void>.delayed(const Duration(milliseconds: 80));
 
     final stream = _stream;
     _stream = null;
@@ -597,7 +677,11 @@ class HostSession extends SessionBase {
       _captureHeld = false;
       await env.captures.release(env.platform);
     }
+    _sharing = false;
+    final files = filesChannel;
+    filesChannel = null;
     try {
+      await files?.close();
       await _control?.close();
       await _inputChannel?.close();
       await _pc?.close();

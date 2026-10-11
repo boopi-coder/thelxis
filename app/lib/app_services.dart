@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io' show exit;
+
 import 'core/address_book.dart';
 import 'core/identity.dart';
 import 'core/settings.dart';
@@ -8,9 +11,11 @@ import 'net/connectivity/connectivity.dart';
 import 'net/discovery.dart';
 import 'net/peer_identity.dart';
 import 'platform/host_platform.dart';
+import 'platform/session_badge.dart';
 import 'session/host_credentials.dart';
 import 'session/session_history.dart';
 import 'session/session_manager.dart';
+import 'update/update_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// The app's long-lived objects, built once in `main` (or by tests with
@@ -29,6 +34,8 @@ class AppServices {
     required this.history,
     required this.sessions,
     required this.desktop,
+    required this.badge,
+    required this.updates,
   });
 
   final AppSettings settings;
@@ -43,6 +50,10 @@ class AppServices {
   final SessionHistory history;
   final SessionManager sessions;
   final DesktopIntegration desktop;
+  final SessionBadge badge;
+
+  /// Over-the-air updates (PROTOCOL.md section 10).
+  final UpdateService updates;
 
   /// Wires everything together. Nothing here touches the network; call
   /// `sessions.start()` afterwards.
@@ -52,7 +63,10 @@ class AppServices {
     required SystemInfo systemInfo,
     required Connectivity connectivity,
     required HostPlatform platform,
+    required SessionBadge badge,
     DesktopIntegration? desktop,
+    UpdateService? updates,
+    void Function()? exitApp,
   }) {
     final settings = AppSettings(prefs, defaultDeviceName: systemInfo.defaultDeviceName);
     final trusted = TrustedDevices(prefs);
@@ -84,8 +98,25 @@ class AppServices {
       platform: platform,
       lan: lan,
       history: history,
+      badge: badge,
       onAttention: () => desk.bringToFront(),
     );
+    // Installing an update restarts the app, so it waits for every session to
+    // end; tell the service the moment the app becomes idle.
+    final updateService = updates ??
+        UpdateService(
+          prefs: prefs,
+          isBusy: () => sessions.hasActiveSessions,
+          exitApp: exitApp ?? () => unawaited(_gracefulExit(sessions, connectivity, desk)),
+        );
+    updateService.isBusy = () => sessions.hasActiveSessions;
+    var wasBusy = false;
+    sessions.addListener(() {
+      final busy = sessions.hasActiveSessions;
+      if (wasBusy && !busy) updateService.notifyIdle();
+      wasBusy = busy;
+    });
+
     return AppServices._(
       settings: settings,
       identity: identity,
@@ -99,6 +130,25 @@ class AppServices {
       history: history,
       sessions: sessions,
       desktop: desk,
+      badge: badge,
+      updates: updateService,
     );
+  }
+
+  /// Quits the way the tray's Quit does: end sessions, stop the listener and
+  /// the relay, tear down the tray and window, then exit the process.
+  static Future<void> _gracefulExit(
+    SessionManager sessions,
+    Connectivity connectivity,
+    DesktopIntegration desktop,
+  ) async {
+    try {
+      await sessions.endAll();
+      await sessions.listener.stop();
+      await connectivity.stop();
+      await desktop.quit();
+    } finally {
+      exit(0);
+    }
   }
 }

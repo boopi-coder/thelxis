@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/strings.dart';
 import '../../session/link_stats.dart';
 import '../../session/session_base.dart';
 import '../theme.dart';
@@ -24,9 +25,11 @@ class ConnectionIndicator extends StatelessWidget {
           ConnectionLevel.bad => s.bad,
         };
         final text = switch (session.phase) {
-          SessionPhase.reconnecting => 'Reconnecting',
+          SessionPhase.reconnecting => context.s.t('session.reconnectingShort'),
           SessionPhase.active => connectionSummary(session.stats.value),
-          _ => 'Connecting',
+          SessionPhase.authenticating => context.s.t('phase.authorizing'),
+          SessionPhase.awaitingApproval => context.s.t('phase.awaiting'),
+          _ => context.s.t('session.connecting'),
         };
         return Row(
           mainAxisSize: MainAxisSize.min,
@@ -68,14 +71,15 @@ class StatsOverlay extends StatelessWidget {
             : (s.bitrateBps! >= 1e6
                 ? '${(s.bitrateBps! / 1e6).toStringAsFixed(1)} Mbps'
                 : '${(s.bitrateBps! / 1e3).round()} kbps');
+        final l = context.s;
         final rows = <(String, String)>[
-          ('RTT', fmt(s.rttMs, 'ms')),
-          ('FPS', fmt(s.fps, '')),
-          ('Bitrate', bitrate),
-          ('Loss', fmt(s.lossPercent, '%', digits: 1)),
-          ('Resolution', s.width == null ? '—' : '${s.width}×${s.height}'),
-          ('Codec', s.codec ?? '—'),
-          ('Path', s.pathLabel),
+          (l.t('stats.rtt'), fmt(s.rttMs, 'ms')),
+          (l.t('stats.fps'), fmt(s.fps, '')),
+          (l.t('stats.bitrate'), bitrate),
+          (l.t('stats.loss'), fmt(s.lossPercent, '%', digits: 1)),
+          (l.t('stats.resolution'), s.width == null ? '—' : '${s.width}×${s.height}'),
+          (l.t('stats.codec'), s.codec ?? '—'),
+          (l.t('stats.path'), s.pathLabel),
         ];
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -99,7 +103,7 @@ class StatsOverlay extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         SizedBox(
-                          width: 78,
+                          width: 92,
                           child: Text(r.$1, style: const TextStyle(color: Colors.white60)),
                         ),
                         Text(r.$2),

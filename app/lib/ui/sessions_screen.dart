@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../core/format.dart';
 import '../core/thelxis_id.dart';
+import '../l10n/strings.dart';
 import '../session/host_session.dart';
 import '../session/session_base.dart';
 import '../session/session_history.dart';
@@ -42,6 +43,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.s;
     final manager = context.watch<SessionManager>();
     final history = context.watch<SessionHistory>();
     final shell = context.read<ShellController>();
@@ -50,18 +52,19 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
     return PageScroll(
       children: [
-        const SectionHeader('Controlling this device'),
+        PageTitle(s.t('sessions.title'), subtitle: s.t('sessions.subtitle')),
+        SectionHeader(s.t('sessions.incoming')),
         if (hosts.isEmpty)
-          const Card(child: EmptyState(icon: Icons.shield_outlined, title: 'Nobody is connected to this device'))
+          Card(child: EmptyState(icon: Icons.shield_outlined, title: s.t('sessions.incoming.empty')))
         else
           for (final s in hosts)
             Padding(
               padding: const EdgeInsets.only(bottom: Gap.s),
               child: _HostRow(session: s),
             ),
-        const SectionHeader('Your connections'),
+        SectionHeader(s.t('sessions.outgoing')),
         if (viewers.isEmpty)
-          const Card(child: EmptyState(icon: Icons.cast_connected_rounded, title: 'No open connections'))
+          Card(child: EmptyState(icon: Icons.cast_connected_rounded, title: s.t('sessions.outgoing.empty')))
         else
           for (final s in viewers)
             Padding(
@@ -77,13 +80,13 @@ class _SessionsScreenState extends State<SessionsScreen> {
               ),
             ),
         SectionHeader(
-          'History',
+          s.t('sessions.history'),
           trailing: history.records.isEmpty
               ? null
-              : TextButton(onPressed: history.clear, child: const Text('Clear')),
+              : TextButton(onPressed: history.clear, child: Text(s.t('sessions.clear'))),
         ),
         if (history.records.isEmpty)
-          const Card(child: EmptyState(icon: Icons.history_rounded, title: 'No finished sessions yet'))
+          Card(child: EmptyState(icon: Icons.history_rounded, title: s.t('sessions.history.empty')))
         else
           Card(
             child: Column(
@@ -97,13 +100,13 @@ class _SessionsScreenState extends State<SessionsScreen> {
   }
 }
 
-String _phaseLabel(SessionPhase p) => switch (p) {
-      SessionPhase.connecting => 'Connecting',
-      SessionPhase.authenticating => 'Authorizing',
-      SessionPhase.awaitingApproval => 'Waiting for approval',
-      SessionPhase.active => 'Active',
-      SessionPhase.reconnecting => 'Reconnecting',
-      SessionPhase.ended => 'Ended',
+String _phaseLabel(S s, SessionPhase p) => switch (p) {
+      SessionPhase.connecting => s.t('phase.connecting'),
+      SessionPhase.authenticating => s.t('phase.authorizing'),
+      SessionPhase.awaitingApproval => s.t('phase.awaiting'),
+      SessionPhase.active => s.t('phase.active'),
+      SessionPhase.reconnecting => s.t('phase.reconnecting'),
+      SessionPhase.ended => s.t('phase.ended'),
     };
 
 class _HostRow extends StatelessWidget {
@@ -117,6 +120,7 @@ class _HostRow extends StatelessWidget {
       listenable: session,
       builder: (context, _) {
         final t = Theme.of(context);
+        final s = context.s;
         return Card(
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: Gap.l, vertical: Gap.xs),
@@ -124,14 +128,14 @@ class _HostRow extends StatelessWidget {
             title: Text(session.peer.name),
             subtitle: Text(
               '${formatThelxisId(session.peer.id)}\n'
-              '${_phaseLabel(session.phase)} · ${formatDuration(session.duration)}'
+              '${_phaseLabel(s, session.phase)} · ${formatDuration(session.duration)}'
               '${session.stats.value.path.name == 'unknown' ? '' : ' · ${session.stats.value.pathLabel}'}',
             ),
             isThreeLine: true,
             trailing: FilledButton.tonal(
               style: FilledButton.styleFrom(foregroundColor: t.colorScheme.error),
               onPressed: () => session.end('user'),
-              child: const Text('Stop'),
+              child: Text(s.t('banner.stop')),
             ),
           ),
         );
@@ -151,21 +155,27 @@ class _ViewerRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: session,
-      builder: (context, _) => Card(
-        child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: Gap.l, vertical: Gap.xs),
-          leading: CircleAvatar(child: Icon(osIcon(session.peer.os))),
-          title: Text(session.peer.name),
-          subtitle: Text('${_phaseLabel(session.phase)} · ${formatDuration(session.duration)}'),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!session.isEnded) TextButton(onPressed: onOpen, child: const Text('Open')),
-              TextButton(onPressed: onClose, child: Text(session.isEnded ? 'Close' : 'End')),
-            ],
+      builder: (context, _) {
+        final s = context.s;
+        return Card(
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: Gap.l, vertical: Gap.xs),
+            leading: CircleAvatar(child: Icon(osIcon(session.peer.os))),
+            title: Text(session.peer.name),
+            subtitle: Text('${_phaseLabel(s, session.phase)} · ${formatDuration(session.duration)}'),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!session.isEnded) TextButton(onPressed: onOpen, child: Text(s.t('sessions.open'))),
+                TextButton(
+                  onPressed: onClose,
+                  child: Text(session.isEnded ? s.t('common.close') : s.t('sessions.end')),
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -178,6 +188,7 @@ class _HistoryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    final s = context.s;
     final when = record.startedAt;
     final date =
         '${when.year}-${when.month.toString().padLeft(2, '0')}-${when.day.toString().padLeft(2, '0')} '
@@ -189,10 +200,17 @@ class _HistoryRow extends StatelessWidget {
       ),
       title: Text(record.peerName),
       subtitle: Text(
-        '${record.incoming ? 'Controlled by them' : 'You controlled'} · $date · '
+        '${record.incoming ? s.t('sessions.incomingRow') : s.t('sessions.outgoingRow')} · $date · '
         '${formatDuration(Duration(seconds: record.durationSeconds))}',
       ),
-      trailing: Text(record.reason == 'user' ? '' : record.reason, style: t.textTheme.labelSmall),
+      trailing: record.reason == 'user'
+          ? null
+          : Text(_reasonLabel(s, record.reason), style: t.textTheme.labelSmall),
     );
   }
+}
+
+String _reasonLabel(S s, String reason) {
+  const known = {'denied', 'remote', 'timeout', 'error', 'security'};
+  return known.contains(reason) ? s.t('reason.$reason') : reason;
 }

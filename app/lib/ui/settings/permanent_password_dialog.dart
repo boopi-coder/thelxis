@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/strings.dart';
 import '../../session/host_credentials.dart';
 
 /// Sets the permanent (unattended) password. Only the derived key is stored.
@@ -34,12 +35,13 @@ class _PermanentPasswordDialogState extends State<_PermanentPasswordDialog> {
   }
 
   Future<void> _save() async {
+    final s = context.s;
     if (_pw.text.length < 8) {
-      setState(() => _error = 'Use at least 8 characters.');
+      setState(() => _error = s.t('perm.pw.short'));
       return;
     }
     if (_pw.text != _confirm.text) {
-      setState(() => _error = 'The two passwords do not match.');
+      setState(() => _error = s.t('perm.pw.mismatch'));
       return;
     }
     setState(() {
@@ -52,17 +54,15 @@ class _PermanentPasswordDialogState extends State<_PermanentPasswordDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.s;
     return AlertDialog(
-      title: const Text('Permanent password'),
+      title: Text(s.t('settings.permanent')),
       content: SizedBox(
         width: 400,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Lets you connect to this device without anyone present. Only a key '
-              'derived from the password is stored, never the password itself.',
-            ),
+            Text(s.t('perm.pw.intro')),
             const SizedBox(height: 16),
             TextField(
               controller: _pw,
@@ -71,7 +71,7 @@ class _PermanentPasswordDialogState extends State<_PermanentPasswordDialog> {
               enableSuggestions: false,
               autocorrect: false,
               decoration: InputDecoration(
-                labelText: 'New password',
+                labelText: s.t('perm.pw.new'),
                 suffixIcon: IconButton(
                   icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                   onPressed: () => setState(() => _obscure = !_obscure),
@@ -85,18 +85,18 @@ class _PermanentPasswordDialogState extends State<_PermanentPasswordDialog> {
               enableSuggestions: false,
               autocorrect: false,
               onSubmitted: (_) => _save(),
-              decoration: InputDecoration(labelText: 'Repeat password', errorText: _error),
+              decoration: InputDecoration(labelText: s.t('perm.pw.repeat'), errorText: _error),
             ),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: _busy ? null : () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(onPressed: _busy ? null : () => Navigator.of(context).pop(), child: Text(s.t('common.cancel'))),
         FilledButton(
           onPressed: _busy ? null : _save,
           child: _busy
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Save'),
+              : Text(s.t('common.save')),
         ),
       ],
     );

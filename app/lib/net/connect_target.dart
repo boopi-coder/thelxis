@@ -1,4 +1,5 @@
 import '../core/thelxis_id.dart';
+import '../l10n/strings.dart';
 import 'net_address.dart';
 
 /// What the user asked to connect to, parsed from the Connect field, an
@@ -30,8 +31,6 @@ class ConnectParseResult {
   bool get isOk => target != null;
 }
 
-const String _unrecognised =
-    'Enter a Thelxis ID with an address (ID@host), an address, or an invite link.';
 
 /// Accepted forms:
 /// * `thelxis://connect?id=<ID>&n=<name>&a=<addr>,<addr>`
@@ -40,7 +39,7 @@ const String _unrecognised =
 /// * a bare Thelxis ID (resolved through the address book / LAN)
 ConnectParseResult parseConnectInput(String input) {
   final text = input.trim();
-  if (text.isEmpty) return const ConnectParseResult.error(_unrecognised);
+  if (text.isEmpty) return ConnectParseResult.error(S.current.t('parse.unrecognised'));
 
   if (text.toLowerCase().startsWith('thelxis:')) return _parseInvite(text);
 
@@ -48,11 +47,11 @@ ConnectParseResult parseConnectInput(String input) {
   if (at >= 0) {
     final id = parseThelxisId(text.substring(0, at));
     if (id == null) {
-      return const ConnectParseResult.error('The Thelxis ID before "@" is not valid.');
+      return ConnectParseResult.error(S.current.t('parse.badId'));
     }
     final addrs = parseAddressList(text.substring(at + 1).split(','));
     if (addrs.isEmpty) {
-      return const ConnectParseResult.error('The address after "@" is not valid.');
+      return ConnectParseResult.error(S.current.t('parse.badAddress'));
     }
     return ConnectParseResult.ok(ConnectTarget(id: id, addresses: addrs));
   }
@@ -62,15 +61,13 @@ ConnectParseResult parseConnectInput(String input) {
 
   // A single word that is nearly an ID is far more likely a typo than a host.
   if (_looksLikeBrokenId(text)) {
-    return const ConnectParseResult.error(
-      'This looks like a Thelxis ID, but it is not 16 characters long. Check it and try again.',
-    );
+    return ConnectParseResult.error(S.current.t('parse.brokenId'));
   }
 
   final addr = NetAddress.parse(text);
   if (addr != null) return ConnectParseResult.ok(ConnectTarget(addresses: [addr]));
 
-  return const ConnectParseResult.error(_unrecognised);
+  return ConnectParseResult.error(S.current.t('parse.unrecognised'));
 }
 
 bool _looksLikeBrokenId(String text) {
@@ -87,14 +84,14 @@ ConnectParseResult _parseInvite(String text) {
   try {
     uri = Uri.parse(text);
   } on FormatException {
-    return const ConnectParseResult.error('This invite link is malformed.');
+    return ConnectParseResult.error(S.current.t('parse.badInvite'));
   }
   if (uri.scheme.toLowerCase() != 'thelxis' || uri.host.toLowerCase() != 'connect') {
-    return const ConnectParseResult.error('This is not a Thelxis invite link.');
+    return ConnectParseResult.error(S.current.t('parse.notInvite'));
   }
   final id = parseThelxisId(uri.queryParameters['id']);
   if (id == null) {
-    return const ConnectParseResult.error('The invite link has no valid Thelxis ID.');
+    return ConnectParseResult.error(S.current.t('parse.inviteNoId'));
   }
   final a = uri.queryParameters['a'] ?? '';
   final name = uri.queryParameters['n'];

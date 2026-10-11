@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../desktop/desktop_integration.dart';
+import '../l10n/strings.dart';
 import '../session/session_manager.dart';
 import '../session/session_base.dart';
 import '../session/viewer_session.dart';
@@ -24,10 +25,10 @@ class AppShell extends StatelessWidget {
   const AppShell({super.key});
 
   static const _destinations = [
-    (Icons.home_outlined, Icons.home_rounded, 'Home'),
-    (Icons.devices_other_outlined, Icons.devices_other_rounded, 'Devices'),
-    (Icons.history_toggle_off_rounded, Icons.history_rounded, 'Sessions'),
-    (Icons.settings_outlined, Icons.settings_rounded, 'Settings'),
+    (Icons.home_outlined, Icons.home_rounded, 'nav.home'),
+    (Icons.devices_other_outlined, Icons.devices_other_rounded, 'nav.devices'),
+    (Icons.history_toggle_off_rounded, Icons.history_rounded, 'nav.sessions'),
+    (Icons.settings_outlined, Icons.settings_rounded, 'nav.settings'),
   ];
 
   @override
@@ -38,10 +39,23 @@ class AppShell extends StatelessWidget {
     final front = shell.front;
     final isDesktop = desktop.isDesktop;
 
+    void go(int page) => context.read<ShellController>().goTo(page);
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyK, control: true): () => showCommandPalette(context),
         const SingleActivator(LogicalKeyboardKey.keyK, meta: true): () => showCommandPalette(context),
+        // Ctrl/Cmd + 1..4 switch pages, Ctrl/Cmd + , opens Settings.
+        for (final (i, key) in [
+          LogicalKeyboardKey.digit1,
+          LogicalKeyboardKey.digit2,
+          LogicalKeyboardKey.digit3,
+          LogicalKeyboardKey.digit4,
+        ].indexed) ...{
+          SingleActivator(key, control: true): () => go(i),
+          SingleActivator(key, meta: true): () => go(i),
+        },
+        const SingleActivator(LogicalKeyboardKey.comma, control: true): () => go(ShellController.pageSettings),
+        const SingleActivator(LogicalKeyboardKey.comma, meta: true): () => go(ShellController.pageSettings),
       },
       child: Focus(
         autofocus: true,
@@ -85,8 +99,10 @@ class AppShell extends StatelessWidget {
   }
 
   Widget _pages(BuildContext context, ShellController shell) {
-    final wide = MediaQuery.sizeOf(context).width >= 720;
-    final stack = IndexedStack(
+    final s = context.s;
+    final width = MediaQuery.sizeOf(context).width;
+    final wide = width >= 720;
+    final stack = _FadeIndexedStack(
       index: shell.page,
       children: [
         const HomeScreen(),
@@ -104,32 +120,86 @@ class AppShell extends StatelessWidget {
             onDestinationSelected: shell.goTo,
             destinations: [
               for (final d in _destinations)
-                NavigationDestination(icon: Icon(d.$1), selectedIcon: Icon(d.$2), label: d.$3),
+                NavigationDestination(icon: Icon(d.$1), selectedIcon: Icon(d.$2), label: s.t(d.$3)),
             ],
           ),
         ],
       );
     }
+    final extended = width >= 1100;
     return Row(
       children: [
         NavigationRail(
+          extended: extended,
+          minExtendedWidth: 200,
+          labelType: extended ? NavigationRailLabelType.none : NavigationRailLabelType.all,
           selectedIndex: shell.page,
           onDestinationSelected: shell.goTo,
-          leading: const Padding(
-            padding: EdgeInsets.symmetric(vertical: Gap.l),
-            child: ThelxisLogo(size: 40),
+          leading: Padding(
+            padding: const EdgeInsets.symmetric(vertical: Gap.l),
+            child: extended
+                ? const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ThelxisLogo(size: 36),
+                      SizedBox(width: 10),
+                      Text('Thelxis', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                    ],
+                  )
+                : const ThelxisLogo(size: 40),
           ),
           destinations: [
             for (final d in _destinations)
               NavigationRailDestination(
                 icon: Icon(d.$1),
                 selectedIcon: Icon(d.$2),
-                label: Text(d.$3),
+                label: Text(s.t(d.$3)),
               ),
           ],
         ),
         Expanded(child: stack),
       ],
+    );
+  }
+}
+
+/// IndexedStack (state of every page is kept) with a short fade when the
+/// visible page changes.
+class _FadeIndexedStack extends StatefulWidget {
+  const _FadeIndexedStack({required this.index, required this.children});
+
+  final int index;
+  final List<Widget> children;
+
+  @override
+  State<_FadeIndexedStack> createState() => _FadeIndexedStackState();
+}
+
+class _FadeIndexedStackState extends State<_FadeIndexedStack> with SingleTickerProviderStateMixin {
+  late final AnimationController _fade = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 180),
+    value: 1,
+  );
+  late final Animation<double> _opacity = CurvedAnimation(parent: _fade, curve: Curves.easeOut);
+
+  @override
+  void didUpdateWidget(_FadeIndexedStack old) {
+    super.didUpdateWidget(old);
+    if (old.index != widget.index) _fade.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _fade.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: IndexedStack(index: widget.index, children: widget.children),
     );
   }
 }
@@ -268,7 +338,7 @@ class _Tab extends StatelessWidget {
                   IconButton(
                     visualDensity: VisualDensity.compact,
                     iconSize: 16,
-                    tooltip: 'Close',
+                    tooltip: context.s.t('common.close'),
                     icon: const Icon(Icons.close_rounded),
                     onPressed: onClose,
                   )

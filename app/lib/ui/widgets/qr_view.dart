@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/qr_code.dart';
+import '../../l10n/strings.dart';
 
 /// Renders [data] as a QR code on a white tile with a quiet zone, so it scans
 /// reliably in both light and dark themes.
@@ -26,7 +27,7 @@ class QrView extends StatelessWidget {
       child: qr == null
           ? const Center(child: Icon(Icons.qr_code_2_rounded, color: Colors.black26))
           : Semantics(
-              label: 'QR code with the invite link',
+              label: context.s.t('share.qr'),
               child: CustomPaint(painter: _QrPainter(qr), size: Size.infinite),
             ),
     );

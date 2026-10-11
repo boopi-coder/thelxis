@@ -1,5 +1,20 @@
 import 'package:flutter/foundation.dart';
 
+/// Localized texts of the tray menu.
+class TrayMenuLabels {
+  const TrayMenuLabels({
+    required this.open,
+    required this.copyId,
+    required this.allowIncoming,
+    required this.quit,
+  });
+
+  final String open;
+  final String copyId;
+  final String allowIncoming;
+  final String quit;
+}
+
 /// What the UI needs from the desktop shell (window, tray, autostart),
 /// without importing any plugin. The real implementation lives in
 /// `desktop_impl.dart` and is wired in `main.dart`; tests and Android use
@@ -16,11 +31,15 @@ abstract class DesktopIntegration {
   /// Shows and focuses the main window (incoming request, security notice).
   Future<void> bringToFront();
 
-  /// Enables or disables starting with the OS.
+  /// Enables or disables starting with the OS (hidden in the tray).
   Future<void> setLaunchAtStartup(bool enabled);
 
-  /// Updates the tray tooltip / state, e.g. "Controlled by Alice".
+  /// Updates the tray tooltip, e.g. "Controlled by Alice".
   Future<void> setTrayStatus(String text);
+
+  /// Rebuilds the tray menu with [labels] and the current Allow-incoming
+  /// state (called when the language or the setting changes).
+  Future<void> updateTrayMenu(TrayMenuLabels labels, {required bool allowIncoming});
 
   Future<void> quit();
 }
@@ -49,6 +68,9 @@ class NoopDesktop implements DesktopIntegration {
 
   @override
   Future<void> setTrayStatus(String text) async {}
+
+  @override
+  Future<void> updateTrayMenu(TrayMenuLabels labels, {required bool allowIncoming}) async {}
 
   @override
   Future<void> quit() async {}

@@ -9,6 +9,7 @@ import '../../net/connectivity/connectivity.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/qr_view.dart';
+import '../../l10n/strings.dart';
 
 Future<void> showShareAccessDialog(BuildContext context) {
   return showDialog<void>(
@@ -29,6 +30,7 @@ class _ShareAccessDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.s;
     final t = Theme.of(context);
     final identity = context.read<Identity>();
     final connectivity = context.read<Connectivity>();
@@ -41,7 +43,7 @@ class _ShareAccessDialog extends StatelessWidget {
         final link = buildInviteLink(id: identity.id, name: name, addresses: addresses);
         final idAt = buildIdAtAddress(identity.id, addresses.isEmpty ? null : addresses.first);
         return AlertDialog(
-          title: const Text('Share access'),
+          title: Text(s.t('share.title')),
           content: SizedBox(
             width: 460,
             child: SingleChildScrollView(
@@ -50,23 +52,21 @@ class _ShareAccessDialog extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Give this to someone you trust. They also need your one-time '
-                    'password, or you must accept their request.',
+                    s.t('share.intro'),
                     style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: Gap.l),
                   Center(child: QrView(data: link, size: 200)),
                   const SizedBox(height: Gap.l),
-                  _CopyRow(label: 'Invite link', value: link, what: 'Invite link'),
+                  _CopyRow(label: s.t('share.link'), value: link, what: s.t('share.link')),
                   const SizedBox(height: Gap.s),
-                  _CopyRow(label: 'ID and address', value: idAt, what: 'ID@address'),
+                  _CopyRow(label: s.t('share.idAt'), value: idAt, what: s.t('share.idAt')),
                   const SizedBox(height: Gap.l),
-                  Text('Reachable at', style: t.textTheme.labelLarge),
+                  Text(s.t('share.reachableAt'), style: t.textTheme.labelLarge),
                   const SizedBox(height: Gap.xs),
                   if (addresses.isEmpty)
                     Text(
-                      'No address found yet. Connect to a network, or open the '
-                      'connectivity diagnostics in Settings.',
+                      s.t('share.noAddress'),
                       style: t.textTheme.bodyMedium?.copyWith(color: context.status.warn),
                     )
                   else
@@ -77,9 +77,7 @@ class _ShareAccessDialog extends StatelessWidget {
                       ),
                   const SizedBox(height: Gap.l),
                   Text(
-                    'The invite identifies this device as ${formatThelxisId(identity.id)}; '
-                    'the other side checks that ID cryptographically, so a wrong '
-                    'address can never connect them to a different device.',
+                    s.t('share.note', {'id': formatThelxisId(identity.id)}),
                     style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
                   ),
                 ],
@@ -87,7 +85,7 @@ class _ShareAccessDialog extends StatelessWidget {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Done')),
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(s.t('common.done'))),
           ],
         );
       },
@@ -129,7 +127,7 @@ class _CopyRow extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: 'Copy',
+            tooltip: context.s.t('common.copy'),
             icon: const Icon(Icons.copy_rounded, size: 20),
             onPressed: () => copyToClipboard(context, value, what),
           ),

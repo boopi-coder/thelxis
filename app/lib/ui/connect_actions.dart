@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/strings.dart';
 import '../net/connect_target.dart';
 import '../session/session_manager.dart';
 import 'shell_controller.dart';
@@ -21,7 +22,7 @@ Future<String?> runConnect(
   try {
     if (reverse) {
       await manager.offerControl(target);
-      messenger?.showSnackBar(const SnackBar(content: Text('Offered control of this device.')));
+      messenger?.showSnackBar(SnackBar(content: Text(S.current.t('connect.offered'))));
     } else {
       final session = await manager.connect(target, viewOnly: viewOnly);
       shell.showSession(session);

@@ -21,7 +21,10 @@ class PromptHost extends StatefulWidget {
 
 class _PromptHostState extends State<PromptHost> {
   PromptQueue? _queue;
-  Prompt<Object?>? _showing;
+
+  /// True from showing a dialog until its route has fully completed; a second
+  /// prompt must wait, otherwise two dialogs would stack for one prompt.
+  bool _dialogOpen = false;
 
   @override
   void didChangeDependencies() {
@@ -43,7 +46,7 @@ class _PromptHostState extends State<PromptHost> {
   void _onChange() {
     if (!mounted) return;
     final next = _queue?.current;
-    if (next == null || identical(next, _showing)) return;
+    if (next == null || _dialogOpen) return;
     final nav = widget.navigatorKey.currentState;
     final overlayContext = widget.navigatorKey.currentContext;
     if (nav == null || overlayContext == null) {
@@ -51,7 +54,7 @@ class _PromptHostState extends State<PromptHost> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _onChange());
       return;
     }
-    _showing = next;
+    _dialogOpen = true;
     BuildContext? dialogContext;
     unawaited(next.result.then<void>((_) {
       final c = dialogContext;
@@ -73,7 +76,7 @@ class _PromptHostState extends State<PromptHost> {
     ).whenComplete(() {
       // A dialog dismissed without an answer must still resolve its prompt.
       if (!next.isResolved) _dismiss(next);
-      _showing = null;
+      _dialogOpen = false;
       WidgetsBinding.instance.addPostFrameCallback((_) => _onChange());
     });
   }

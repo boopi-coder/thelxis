@@ -2,6 +2,8 @@
 /// is pure Dart over plain maps so it can be unit tested without the plugin.
 library;
 
+import '../l10n/strings.dart';
+
 /// One entry of a stats report (id, type and member values).
 class StatEntry {
   const StatEntry(this.id, this.type, this.values);
@@ -37,10 +39,10 @@ class LinkStats {
   final LinkPath path;
 
   String get pathLabel => switch (path) {
-        LinkPath.lan => 'LAN',
+        LinkPath.lan => S.current.t('path.lan'),
         LinkPath.ipv6 => 'IPv6',
-        LinkPath.direct => 'Direct',
-        LinkPath.relay => 'Via host TURN',
+        LinkPath.direct => S.current.t('path.direct'),
+        LinkPath.relay => S.current.t('path.relay'),
         LinkPath.unknown => '—',
       };
 }

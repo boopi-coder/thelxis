@@ -5,6 +5,7 @@ import '../../core/address_book.dart';
 import '../../net/connect_target.dart';
 import '../../net/discovery.dart';
 import '../../net/net_address.dart';
+import '../../l10n/strings.dart';
 import '../connect_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -114,7 +115,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
         await runConnectWithFeedback(context, target, reverse: true);
       case DeviceAction.addToBook:
         await book.addManual(id: p.id, name: p.name, addresses: [p.address]);
-        if (mounted) showMessage(context, 'Added ${p.name}');
+        if (mounted) showMessage(context, context.s.t('devices.added', {'name': p.name}));
       default:
         break;
     }
@@ -122,6 +123,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.s;
     final book = context.watch<AddressBook>();
     final lan = context.watch<LanDiscovery>();
     final q = _search.text.trim().toLowerCase();
@@ -131,6 +133,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
     return PageScroll(
       children: [
+        PageTitle(s.t('devices.title'), subtitle: s.t('devices.subtitle')),
         Row(
           children: [
             Expanded(
@@ -138,10 +141,10 @@ class _DevicesScreenState extends State<DevicesScreen> {
                 controller: _search,
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
-                  hintText: 'Search devices',
+                  hintText: s.t('devices.search'),
                   prefixIcon: const Icon(Icons.search_rounded),
                   suffixIcon: IconButton(
-                    tooltip: 'Command palette (Ctrl/⌘+K)',
+                    tooltip: s.t('devices.palette'),
                     icon: const Icon(Icons.keyboard_command_key_rounded),
                     onPressed: () => showCommandPalette(context),
                   ),
@@ -150,7 +153,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
             ),
             const SizedBox(width: Gap.s),
             PopupMenuButton<String>(
-              tooltip: 'Address book',
+              tooltip: s.t('devices.bookMenu'),
               icon: const Icon(Icons.more_vert_rounded),
               onSelected: (v) {
                 switch (v) {
@@ -162,21 +165,21 @@ class _DevicesScreenState extends State<DevicesScreen> {
                     showExportDialog(context, book);
                 }
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'add', child: Text('Add a device')),
-                PopupMenuItem(value: 'import', child: Text('Import…')),
-                PopupMenuItem(value: 'export', child: Text('Export…')),
+              itemBuilder: (_) => [
+                PopupMenuItem(value: 'add', child: Text(s.t('devices.add'))),
+                PopupMenuItem(value: 'import', child: Text(s.t('devices.import'))),
+                PopupMenuItem(value: 'export', child: Text(s.t('devices.export'))),
               ],
             ),
           ],
         ),
-        SectionHeader('On this network', trailing: _scanButton(lan)),
+        SectionHeader(s.t('devices.lan'), trailing: _scanButton(lan, s)),
         if (peers.isEmpty)
-          const Card(
+          Card(
             child: EmptyState(
               icon: Icons.wifi_find_rounded,
-              title: 'No devices found',
-              message: 'Devices running Thelxis on this network show up here automatically.',
+              title: s.t('devices.lan.empty'),
+              message: s.t('devices.lan.empty.hint'),
             ),
           )
         else
@@ -185,14 +188,19 @@ class _DevicesScreenState extends State<DevicesScreen> {
               padding: const EdgeInsets.only(bottom: Gap.s),
               child: DeviceTile.lan(peer: p, onAction: (a) => _peerAction(p, a)),
             ),
-        const SectionHeader('Address book'),
+        SectionHeader(s.t('devices.book')),
         if (entries.isEmpty)
           Card(
             child: EmptyState(
               icon: Icons.contacts_outlined,
-              title: q.isEmpty ? 'Nothing saved yet' : 'No matches',
-              message: q.isEmpty
-                  ? 'Devices you connect to are remembered here, with their addresses.'
+              title: q.isEmpty ? s.t('devices.book.empty') : s.t('devices.noMatches'),
+              message: q.isEmpty ? s.t('devices.book.empty.hint') : null,
+              action: q.isEmpty
+                  ? FilledButton.tonalIcon(
+                      onPressed: () => showAddDeviceDialog(context, book),
+                      icon: const Icon(Icons.add_rounded),
+                      label: Text(s.t('devices.add')),
+                    )
                   : null,
             ),
           )
@@ -210,9 +218,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
     );
   }
 
-  Widget _scanButton(LanDiscovery lan) => TextButton.icon(
+  Widget _scanButton(LanDiscovery lan, S s) => TextButton.icon(
         onPressed: lan.scanNow,
         icon: const Icon(Icons.refresh_rounded, size: 18),
-        label: const Text('Scan'),
+        label: Text(s.t('devices.scan')),
       );
 }

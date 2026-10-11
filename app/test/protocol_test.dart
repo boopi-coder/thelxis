@@ -208,7 +208,7 @@ void main() {
       const a = Permissions();
       expect(a.intersect(Permissions.viewOnly), Permissions.viewOnly);
       expect(Permissions.fromJson(null), Permissions.none);
-      expect(Permissions.fromJson({'view': true}), const Permissions(control: false, clipboard: false));
+      expect(Permissions.fromJson({'view': true}), const Permissions(control: false, clipboard: false, files: false));
     });
   });
 }

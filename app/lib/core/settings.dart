@@ -28,6 +28,7 @@ class AppSettings extends ChangeNotifier {
   static const _kTouchMode = 'touch_mode';
   static const _kClipboardSync = 'clipboard_sync';
   static const _kHistory = 'history';
+  static const _kLanguage = 'language';
 
   String get deviceName {
     final v = _prefs.getString(_kDeviceName);
@@ -64,6 +65,7 @@ class AppSettings extends ChangeNotifier {
       view: true,
       control: parts.contains('control'),
       clipboard: parts.contains('clipboard'),
+      files: parts.contains('files'),
     );
   }
 
@@ -85,6 +87,12 @@ class AppSettings extends ChangeNotifier {
 
   bool get clipboardSync => _prefs.getBool(_kClipboardSync) ?? true;
 
+  /// `system` (follow the OS), `en` or `ru`.
+  String get language {
+    final v = _prefs.getString(_kLanguage);
+    return v == 'en' || v == 'ru' ? v! : 'system';
+  }
+
   /// Raw JSON of the local session history (managed by SessionHistory).
   String? get historyJson => _prefs.getString(_kHistory);
 
@@ -100,6 +108,8 @@ class AppSettings extends ChangeNotifier {
   Future<void> setClipboardSync(bool v) => _set(() => _prefs.setBool(_kClipboardSync, v));
   Future<void> setHistoryJson(String v) => _prefs.setString(_kHistory, v);
 
+  Future<void> setLanguage(String value) => _set(() => _prefs.setString(_kLanguage, value));
+
   Future<void> setThemeMode(ThemeMode mode) => _set(() => _prefs.setString(_kTheme, mode.name));
 
   Future<void> setUnattendedKey(List<int>? key) => _set(() async {
@@ -109,7 +119,7 @@ class AppSettings extends ChangeNotifier {
 
   Future<void> setDefaultPermissions(Permissions p) => _set(() => _prefs.setString(
         _kPerms,
-        [if (p.control) 'control', if (p.clipboard) 'clipboard'].join(','),
+        [if (p.control) 'control', if (p.clipboard) 'clipboard', if (p.files) 'files'].join(','),
       ));
 
   Future<void> _set(Future<bool> Function() write) async {

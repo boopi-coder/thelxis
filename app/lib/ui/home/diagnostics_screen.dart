@@ -6,6 +6,7 @@ import '../../net/connectivity/connectivity.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'reachability.dart';
+import '../../l10n/strings.dart';
 
 /// Connectivity diagnostics: LAN IPs, IPv6, router / UPnP status, external IP,
 /// CGNAT warning, mapped ports, problems.
@@ -14,14 +15,15 @@ class DiagnosticsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.s;
     final connectivity = context.read<Connectivity>();
     final settings = context.watch<AppSettings>();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Connectivity diagnostics'),
+        title: Text(s.t('diag.title')),
         actions: [
           IconButton(
-            tooltip: 'Re-scan',
+            tooltip: s.t('diag.rescan'),
             icon: const Icon(Icons.refresh_rounded),
             onPressed: connectivity.refresh,
           ),
@@ -30,7 +32,8 @@ class DiagnosticsScreen extends StatelessWidget {
       body: ValueListenableBuilder<ReachabilityReport>(
         valueListenable: connectivity.report,
         builder: (context, r, _) {
-          final summary = summarizeReachability(allowIncoming: settings.allowIncoming, report: r);
+          final summary = summarizeReachability(allowIncoming: settings.allowIncoming, report: r, strings: s);
+          String yesNo(bool v) => v ? s.t('common.yes') : s.t('common.no');
           return PageScroll(
             maxWidth: 720,
             children: [
@@ -47,44 +50,49 @@ class DiagnosticsScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              const SectionHeader('This device'),
+              SectionHeader(s.t('diag.section.device')),
               Card(
                 child: Column(
                   children: [
-                    _row('Listening on TCP 47100', r.listening ? 'Yes' : 'No', ok: r.listening),
-                    _row('Embedded STUN/TURN', r.turnRunning ? 'Running' : 'Stopped', ok: r.turnRunning),
-                    _row('LAN IPv4', r.lanIPv4.isEmpty ? 'None' : r.lanIPv4.join(', ')),
-                    _row('Global IPv6', r.globalIPv6.isEmpty ? 'None' : r.globalIPv6.join(', '), ok: r.globalIPv6.isNotEmpty),
+                    _row(s.t('diag.listening'), yesNo(r.listening), ok: r.listening),
+                    _row(s.t('diag.relay'), r.turnRunning ? s.t('diag.running') : s.t('diag.stopped'), ok: r.turnRunning),
+                    _row(s.t('diag.lanIPv4'), r.lanIPv4.isEmpty ? s.t('common.none') : r.lanIPv4.join(', ')),
+                    _row(
+                      s.t('diag.ipv6'),
+                      r.globalIPv6.isEmpty ? s.t('common.none') : r.globalIPv6.join(', '),
+                      ok: r.globalIPv6.isNotEmpty,
+                    ),
                   ],
                 ),
               ),
-              const SectionHeader('Router'),
+              SectionHeader(s.t('diag.section.router')),
               Card(
                 child: Column(
                   children: [
                     _row(
-                      'UPnP / NAT-PMP / PCP gateway',
-                      r.gatewayFound ? 'Found (${_method(r.mappingMethod)})' : 'Not found',
+                      s.t('diag.gateway'),
+                      r.gatewayFound
+                          ? s.t('diag.gateway.found', {'method': _method(s, r.mappingMethod)})
+                          : s.t('diag.gateway.none'),
                       ok: r.gatewayFound,
                     ),
-                    _row('External IPv4', r.externalIPv4 ?? 'Unknown'),
-                    _row('Public address', r.externalIsPublic ? 'Yes' : 'No', ok: r.externalIsPublic),
-                    if (r.cgnat)
-                      _row('Carrier-grade NAT', 'Detected', ok: false),
+                    _row(s.t('diag.externalIp'), r.externalIPv4 ?? s.t('common.unknown')),
+                    _row(s.t('diag.publicAddress'), yesNo(r.externalIsPublic), ok: r.externalIsPublic),
+                    if (r.externalIsDirect) _row(s.t('diag.directAddress'), s.t('diag.directAddress.yes'), ok: true),
+                    if (r.cgnat) _row(s.t('diag.cgnat'), s.t('diag.detected'), ok: false),
                     _row(
-                      'Port mappings',
+                      s.t('diag.mappings'),
                       r.mappings.isEmpty
-                          ? 'None'
+                          ? s.t('common.none')
                           : r.mappings
-                              .map((m) =>
-                                  '${m.protocol.name.toUpperCase()} ${m.internalPort} → ${m.externalPort}')
+                              .map((m) => '${m.protocol.name.toUpperCase()} ${m.internalPort} → ${m.externalPort}')
                               .join(', '),
                     ),
                   ],
                 ),
               ),
               if (r.problems.isNotEmpty) ...[
-                const SectionHeader('Problems'),
+                SectionHeader(s.t('diag.section.problems')),
                 Card(
                   child: Column(
                     children: [
@@ -97,15 +105,11 @@ class DiagnosticsScreen extends StatelessWidget {
                   ),
                 ),
               ],
-              const SectionHeader('How connections work'),
+              SectionHeader(s.t('diag.section.how')),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(
-                  'Thelxis has no server. A device is reachable when it has a public '
-                  'IPv6 address, a router mapping (UPnP / NAT-PMP), or a manual port '
-                  'forward of 47100 (TCP and UDP) and 47101 (TCP). If only the other '
-                  'side is reachable, use "Let them control this device" to connect '
-                  'in reverse.',
+                  s.t('diag.how'),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -118,16 +122,16 @@ class DiagnosticsScreen extends StatelessWidget {
     );
   }
 
-  static String _method(MappingMethod? m) => switch (m) {
+  static String _method(S s, MappingMethod? m) => switch (m) {
         MappingMethod.upnp => 'UPnP',
         MappingMethod.natPmp => 'NAT-PMP',
         MappingMethod.pcp => 'PCP',
-        null => 'unknown',
+        null => s.t('common.unknown'),
       };
 
   Widget _row(String label, String value, {bool? ok}) {
     return Builder(builder: (context) {
-      final s = context.status;
+      final st = context.status;
       return ListTile(
         title: Text(label),
         trailing: ConstrainedBox(
@@ -141,7 +145,7 @@ class DiagnosticsScreen extends StatelessWidget {
                   child: Icon(
                     ok ? Icons.check_circle_rounded : Icons.cancel_rounded,
                     size: 18,
-                    color: ok ? s.good : s.warn,
+                    color: ok ? st.good : st.warn,
                   ),
                 ),
               Flexible(child: Text(value, textAlign: TextAlign.end)),

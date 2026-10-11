@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/strings.dart';
 import '../../protocol/models.dart';
 import '../../session/touch_gestures.dart';
 import '../../session/viewer_session.dart';
@@ -22,6 +23,8 @@ class SessionToolbar extends StatelessWidget {
     required this.onToggleStats,
     required this.onToggleFullScreen,
     required this.onToggleKeyboard,
+    required this.filesOpen,
+    required this.onToggleFiles,
     required this.onTouchMode,
     required this.onActualSize,
     required this.onEnd,
@@ -39,6 +42,8 @@ class SessionToolbar extends StatelessWidget {
   final VoidCallback onToggleStats;
   final VoidCallback onToggleFullScreen;
   final VoidCallback onToggleKeyboard;
+  final bool filesOpen;
+  final VoidCallback onToggleFiles;
   final ValueChanged<TouchMode> onTouchMode;
   final VoidCallback onActualSize;
   final VoidCallback onEnd;
@@ -50,6 +55,9 @@ class SessionToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // Phones cannot fit every control in one row: the rest moves into a menu
+    // so End and the keyboard button are always on screen.
+    if (MediaQuery.sizeOf(context).width < 620) return _buildCompact(context, scheme);
     return Material(
       color: scheme.surfaceContainerHigh.withValues(alpha: 0.94),
       elevation: 8,
@@ -58,9 +66,11 @@ class SessionToolbar extends StatelessWidget {
       child: ListenableBuilder(
         listenable: Listenable.merge([session, view]),
         builder: (context, _) {
+          final l = context.s;
           final perms = session.permissions;
           final canControl = perms?.control ?? false;
           final canClipboard = perms?.clipboard ?? false;
+          final canFiles = perms?.files ?? false;
           return SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -69,7 +79,7 @@ class SessionToolbar extends StatelessWidget {
               children: [
                 if (onBack != null)
                   IconButton(
-                    tooltip: 'Back to Thelxis',
+                    tooltip: l.t('toolbar.back'),
                     icon: const Icon(Icons.arrow_back_rounded),
                     onPressed: onBack,
                   ),
@@ -83,7 +93,7 @@ class SessionToolbar extends StatelessWidget {
                 _keysMenu(context),
                 if (!isDesktop)
                   IconButton(
-                    tooltip: keyboardOpen ? 'Hide keyboard' : 'Keyboard',
+                    tooltip: keyboardOpen ? l.t('toolbar.keyboard.hide') : l.t('toolbar.keyboard'),
                     isSelected: keyboardOpen,
                     icon: const Icon(Icons.keyboard_outlined),
                     selectedIcon: const Icon(Icons.keyboard_hide_outlined),
@@ -92,15 +102,23 @@ class SessionToolbar extends StatelessWidget {
                 if (!isDesktop && canControl) _touchModeMenu(context),
                 if (canClipboard)
                   IconButton(
-                    tooltip: session.clipboardSyncOn ? 'Clipboard sync on' : 'Clipboard sync off',
+                    tooltip: session.clipboardSyncOn ? l.t('toolbar.clipboard.on') : l.t('toolbar.clipboard.off'),
                     isSelected: session.clipboardSyncOn,
                     icon: const Icon(Icons.content_paste_off_outlined),
                     selectedIcon: const Icon(Icons.content_paste_go_rounded),
                     onPressed: () => session.setClipboardSync(!session.clipboardSyncOn),
                   ),
+                if (canFiles)
+                  IconButton(
+                    tooltip: l.t('toolbar.files'),
+                    isSelected: filesOpen,
+                    icon: const Icon(Icons.folder_open_outlined),
+                    selectedIcon: const Icon(Icons.folder_open_rounded),
+                    onPressed: onToggleFiles,
+                  ),
                 if (canControl)
                   IconButton(
-                    tooltip: session.userViewOnly ? 'View only (tap to control)' : 'Controlling (tap for view only)',
+                    tooltip: session.userViewOnly ? l.t('toolbar.viewOnly.on') : l.t('toolbar.viewOnly.off'),
                     isSelected: session.userViewOnly,
                     icon: const Icon(Icons.mouse_outlined),
                     selectedIcon: const Icon(Icons.visibility_outlined),
@@ -109,12 +127,12 @@ class SessionToolbar extends StatelessWidget {
                 _fitMenu(context),
                 if (isDesktop)
                   IconButton(
-                    tooltip: fullScreen ? 'Exit full screen' : 'Full screen',
+                    tooltip: fullScreen ? l.t('toolbar.fullscreen.exit') : l.t('toolbar.fullscreen'),
                     icon: Icon(fullScreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded),
                     onPressed: onToggleFullScreen,
                   ),
                 IconButton(
-                  tooltip: 'Statistics',
+                  tooltip: l.t('toolbar.stats'),
                   isSelected: showStats,
                   icon: const Icon(Icons.query_stats_rounded),
                   selectedIcon: const Icon(Icons.query_stats_rounded),
@@ -131,8 +149,165 @@ class SessionToolbar extends StatelessWidget {
                     ),
                     onPressed: onEnd,
                     icon: const Icon(Icons.call_end_rounded, size: 18),
-                    label: const Text('End'),
+                    label: Text(l.t('toolbar.end')),
                   ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildCompact(BuildContext context, ColorScheme scheme) {
+    return Material(
+      color: scheme.surfaceContainerHigh.withValues(alpha: 0.94),
+      elevation: 8,
+      shadowColor: Colors.black54,
+      borderRadius: BorderRadius.circular(28),
+      child: ListenableBuilder(
+        listenable: Listenable.merge([session, view]),
+        builder: (context, _) {
+          final l = context.s;
+          final perms = session.permissions;
+          final canControl = perms?.control ?? false;
+          final canClipboard = perms?.clipboard ?? false;
+          final canFiles = perms?.files ?? false;
+          final keys = specialKeysFor(session.peer.os);
+
+          PopupMenuEntry<VoidCallback> header(String text) => PopupMenuItem<VoidCallback>(
+                enabled: false,
+                height: 32,
+                child: Text(
+                  text.toUpperCase(),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        letterSpacing: 1,
+                      ),
+                ),
+              );
+
+          PopupMenuEntry<VoidCallback> item(String text, VoidCallback run,
+                  {IconData? icon, bool checked = false}) =>
+              PopupMenuItem<VoidCallback>(
+                value: run,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      child: checked
+                          ? Icon(Icons.check_rounded, size: 18, color: scheme.primary)
+                          : (icon == null ? null : Icon(icon, size: 18)),
+                    ),
+                    const SizedBox(width: 12),
+                    Flexible(child: Text(text)),
+                  ],
+                ),
+              );
+
+          final qualityLabels = {
+            QualityPreset.auto: l.t('quality.auto'),
+            QualityPreset.speed: l.t('quality.speed'),
+            QualityPreset.balanced: l.t('quality.balanced'),
+            QualityPreset.quality: l.t('quality.quality'),
+          };
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Row(
+              children: [
+                if (onBack != null)
+                  IconButton(
+                    tooltip: l.t('toolbar.back'),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    onPressed: onBack,
+                  ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: ConnectionIndicator(session: session),
+                    ),
+                  ),
+                ),
+                if (!isDesktop)
+                  IconButton(
+                    tooltip: keyboardOpen ? l.t('toolbar.keyboard.hide') : l.t('toolbar.keyboard'),
+                    isSelected: keyboardOpen,
+                    icon: const Icon(Icons.keyboard_outlined),
+                    selectedIcon: const Icon(Icons.keyboard_hide_outlined),
+                    onPressed: onToggleKeyboard,
+                  ),
+                if (canFiles)
+                  IconButton(
+                    tooltip: l.t('toolbar.files'),
+                    isSelected: filesOpen,
+                    icon: const Icon(Icons.folder_open_outlined),
+                    selectedIcon: const Icon(Icons.folder_open_rounded),
+                    onPressed: onToggleFiles,
+                  ),
+                PopupMenuButton<VoidCallback>(
+                  tooltip: l.t('common.more'),
+                  icon: const Icon(Icons.more_vert_rounded),
+                  onOpened: onMenuOpened,
+                  onSelected: (run) => run(),
+                  itemBuilder: (_) => [
+                    if (session.displays.length > 1) ...[
+                      header(l.t('toolbar.display')),
+                      for (final d in session.displays)
+                        item(
+                          '${d.name}  ${d.width}×${d.height}',
+                          () => session.selectDisplay(d.id),
+                          checked: d.id == session.activeDisplayId,
+                        ),
+                    ],
+                    header(l.t('toolbar.quality')),
+                    for (final e in qualityLabels.entries)
+                      item(e.value, () => session.setQuality(e.key), checked: e.key == session.quality),
+                    if (!session.viewOnly) ...[
+                      header(l.t('toolbar.keys')),
+                      for (final k in keys) item(k.label, () => k.run(session.encoder), icon: k.icon),
+                    ],
+                    if (!isDesktop && canControl) ...[
+                      header(l.t('toolbar.touchMode')),
+                      item(l.t('toolbar.touchpad'), () => onTouchMode(TouchMode.touchpad),
+                          checked: touchMode == TouchMode.touchpad),
+                      item(l.t('toolbar.direct'), () => onTouchMode(TouchMode.direct),
+                          checked: touchMode == TouchMode.direct),
+                    ],
+                    const PopupMenuDivider(),
+                    if (canClipboard)
+                      item(
+                        session.clipboardSyncOn ? l.t('toolbar.clipboard.on') : l.t('toolbar.clipboard.off'),
+                        () => session.setClipboardSync(!session.clipboardSyncOn),
+                        icon: Icons.content_paste_go_rounded,
+                        checked: session.clipboardSyncOn,
+                      ),
+                    if (canControl)
+                      item(
+                        session.userViewOnly ? l.t('toolbar.viewOnly.on') : l.t('toolbar.viewOnly.off'),
+                        () => session.setViewOnly(!session.userViewOnly),
+                        icon: session.userViewOnly ? Icons.visibility_outlined : Icons.mouse_outlined,
+                      ),
+                    item(l.t('toolbar.fit'), view.reset,
+                        icon: Icons.fit_screen_rounded,
+                        checked: view.mode == FitMode.fit && view.explicit.isIdentity),
+                    item(l.t('toolbar.actual'), onActualSize,
+                        icon: Icons.zoom_in_map_rounded, checked: view.mode == FitMode.actual),
+                    item(l.t('toolbar.stats'), onToggleStats, icon: Icons.query_stats_rounded, checked: showStats),
+                  ],
+                ),
+                IconButton.filled(
+                  tooltip: l.t('toolbar.end'),
+                  style: IconButton.styleFrom(
+                    backgroundColor: scheme.error,
+                    foregroundColor: scheme.onError,
+                  ),
+                  icon: const Icon(Icons.call_end_rounded),
+                  onPressed: onEnd,
                 ),
               ],
             ),
@@ -144,7 +319,7 @@ class SessionToolbar extends StatelessWidget {
 
   Widget _displayMenu(BuildContext context) {
     return PopupMenuButton<String>(
-      tooltip: 'Display',
+      tooltip: context.s.t('toolbar.display'),
       icon: const Icon(Icons.desktop_windows_outlined),
       onOpened: onMenuOpened,
       onSelected: session.selectDisplay,
@@ -153,21 +328,22 @@ class SessionToolbar extends StatelessWidget {
           CheckedPopupMenuItem<String>(
             value: d.id,
             checked: d.id == session.activeDisplayId,
-            child: Text('${d.name}  ${d.width}×${d.height}${d.primary ? '  (main)' : ''}'),
+            child: Text('${d.name}  ${d.width}×${d.height}${d.primary ? '  ${context.s.t('toolbar.display.main')}' : ''}'),
           ),
       ],
     );
   }
 
   Widget _qualityMenu(BuildContext context) {
-    const labels = {
-      QualityPreset.auto: 'Auto',
-      QualityPreset.speed: 'Speed (30 fps, low bandwidth)',
-      QualityPreset.balanced: 'Balanced',
-      QualityPreset.quality: 'Quality (60 fps)',
+    final l = context.s;
+    final labels = {
+      QualityPreset.auto: l.t('quality.auto'),
+      QualityPreset.speed: l.t('quality.speed'),
+      QualityPreset.balanced: l.t('quality.balanced'),
+      QualityPreset.quality: l.t('quality.quality'),
     };
     return PopupMenuButton<QualityPreset>(
-      tooltip: 'Quality',
+      tooltip: l.t('toolbar.quality'),
       icon: const Icon(Icons.speed_rounded),
       onOpened: onMenuOpened,
       onSelected: session.setQuality,
@@ -185,7 +361,7 @@ class SessionToolbar extends StatelessWidget {
   Widget _keysMenu(BuildContext context) {
     final keys = specialKeysFor(session.peer.os);
     return PopupMenuButton<SpecialKey>(
-      tooltip: 'Special keys',
+      tooltip: context.s.t('toolbar.keys'),
       enabled: !session.viewOnly,
       icon: const Icon(Icons.keyboard_command_key_rounded),
       onOpened: onMenuOpened,
@@ -201,8 +377,9 @@ class SessionToolbar extends StatelessWidget {
   }
 
   Widget _touchModeMenu(BuildContext context) {
+    final l = context.s;
     return PopupMenuButton<TouchMode>(
-      tooltip: 'Touch mode',
+      tooltip: l.t('toolbar.touchMode'),
       icon: Icon(touchMode == TouchMode.touchpad ? Icons.touch_app_outlined : Icons.pan_tool_alt_outlined),
       onOpened: onMenuOpened,
       onSelected: onTouchMode,
@@ -210,20 +387,21 @@ class SessionToolbar extends StatelessWidget {
         CheckedPopupMenuItem(
           value: TouchMode.touchpad,
           checked: touchMode == TouchMode.touchpad,
-          child: const Text('Touchpad (relative cursor)'),
+          child: Text(l.t('toolbar.touchpad')),
         ),
         CheckedPopupMenuItem(
           value: TouchMode.direct,
           checked: touchMode == TouchMode.direct,
-          child: const Text('Direct touch'),
+          child: Text(l.t('toolbar.direct')),
         ),
       ],
     );
   }
 
   Widget _fitMenu(BuildContext context) {
+    final l = context.s;
     return PopupMenuButton<FitMode>(
-      tooltip: 'Zoom',
+      tooltip: l.t('toolbar.zoom'),
       icon: const Icon(Icons.zoom_in_map_rounded),
       onOpened: onMenuOpened,
       onSelected: (m) => m == FitMode.fit ? view.reset() : onActualSize(),
@@ -231,12 +409,12 @@ class SessionToolbar extends StatelessWidget {
         CheckedPopupMenuItem(
           value: FitMode.fit,
           checked: view.mode == FitMode.fit && view.explicit.isIdentity,
-          child: const Text('Fit to window'),
+          child: Text(l.t('toolbar.fit')),
         ),
         CheckedPopupMenuItem(
           value: FitMode.actual,
           checked: view.mode == FitMode.actual,
-          child: const Text('Actual size (1:1)'),
+          child: Text(l.t('toolbar.actual')),
         ),
       ],
     );

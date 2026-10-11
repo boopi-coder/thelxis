@@ -1,3 +1,4 @@
+import '../../l10n/strings.dart';
 import '../../session/link_stats.dart';
 import '../../session/session_base.dart';
 
@@ -30,5 +31,5 @@ String connectionSummary(LinkStats stats) {
     if (rtt != null) '${rtt.round()} ms',
     if (stats.path != LinkPath.unknown) stats.pathLabel,
   ];
-  return parts.isEmpty ? 'Connecting' : parts.join(' · ');
+  return parts.isEmpty ? S.current.t('session.connecting') : parts.join(' · ');
 }

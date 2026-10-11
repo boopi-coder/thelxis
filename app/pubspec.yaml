@@ -1,6 +1,6 @@
 name: thelxis
 description: "Thelxis — modern remote desktop"
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+publish_to: none
 
 version: 0.1.0+1
 
@@ -9,6 +9,8 @@ environment:
 
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
 
   flutter_webrtc: ^1.6.2+hotfix.4
@@ -27,6 +29,8 @@ dependencies:
   win32: ^5.15.0
   collection: ^1.19.1
   url_launcher: ^6.3.3
+  desktop_drop: ^0.8.4
+  file_selector: ^1.1.0
 
 dev_dependencies:
   flutter_test:

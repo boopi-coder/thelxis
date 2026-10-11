@@ -8,12 +8,14 @@ class Permissions {
     this.view = true,
     this.control = true,
     this.clipboard = true,
-    this.files = false,
+    this.files = true,
     this.audio = false,
   });
 
-  static const Permissions viewOnly = Permissions(control: false, clipboard: false);
-  static const Permissions none = Permissions(view: false, control: false, clipboard: false);
+  static const Permissions viewOnly =
+      Permissions(control: false, clipboard: false, files: false);
+  static const Permissions none =
+      Permissions(view: false, control: false, clipboard: false, files: false);
 
   final bool view;
   final bool control;

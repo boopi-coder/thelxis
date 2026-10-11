@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show InternetAddress;
 
 import 'package:flutter/foundation.dart';
 
@@ -16,7 +17,10 @@ import '../net/listener.dart';
 import '../net/net_address.dart';
 import '../net/peer_identity.dart';
 import '../net/signaling_channel.dart';
+import '../l10n/strings.dart';
 import '../platform/host_platform.dart';
+import '../platform/session_badge.dart';
+import '../platform/impl/android_host.dart';
 import '../protocol/models.dart';
 import '../protocol/signaling_messages.dart';
 import 'capture.dart';
@@ -57,9 +61,12 @@ class SessionManager extends ChangeNotifier {
     required this.platform,
     required this.lan,
     required this.history,
+    required this.badge,
     SignalingListener? listener,
     Dialer? dialer,
     this.onAttention,
+    this.listenerPort = ThelxisPorts.signalingTcp,
+    this.listenerAddress,
   }) {
     this.listener = listener ??
         SignalingListener(
@@ -87,8 +94,16 @@ class SessionManager extends ChangeNotifier {
   final LanDiscovery lan;
   final SessionHistory history;
 
+  /// The mandatory always-on-top "being controlled" badge (PROTOCOL.md 9).
+  final SessionBadge badge;
+
   /// Brings the window to the front when something needs attention.
   final VoidCallback? onAttention;
+
+  /// TCP port and bind address of the signaling listener (tests use an
+  /// ephemeral loopback port).
+  final int listenerPort;
+  final InternetAddress? listenerAddress;
 
   late final SignalingListener listener;
   late final Dialer dialer;
@@ -98,6 +113,9 @@ class SessionManager extends ChangeNotifier {
   final List<HostSession> _hosts = [];
   final List<ViewerSession> _viewers = [];
   StreamSubscription<IncomingPeer>? _incomingSub;
+  StreamSubscription<void>? _captureStopSub;
+  StreamSubscription<void>? _badgeStopSub;
+  BadgeState? _lastBadge;
   Future<void> _applying = Future.value();
   bool? _lastUpnp;
   bool _started = false;
@@ -111,6 +129,20 @@ class SessionManager extends ChangeNotifier {
   List<ViewerSession> get viewerSessions => List.unmodifiable(_viewers);
 
   List<HostSession> get activeHostSessions => _hosts.where((s) => !s.isEnded).toList();
+
+  /// Whether any session, incoming or outgoing, is still running. Updates
+  /// install only while this is false.
+  bool get hasActiveSessions =>
+      _hosts.any((s) => !s.isEnded) || _viewers.any((s) => !s.isEnded);
+
+  /// Incoming sessions that currently see this screen: capture running, or
+  /// the session active / reconnecting. The badge and the banner show exactly
+  /// these, and nothing else may hide them.
+  List<HostSession> get liveHostSessions => _hosts
+      .where((s) =>
+          !s.isEnded &&
+          (s.sharing || s.phase == SessionPhase.active || s.phase == SessionPhase.reconnecting))
+      .toList();
 
   LocalPeerInfo _localInfo() => LocalPeerInfo(
         name: settings.deviceName,
@@ -126,7 +158,7 @@ class SessionManager extends ChangeNotifier {
         platform: platform,
         captures: captures,
         requestApproval: _requestApproval,
-        onSecurityWarning: (title, message) {
+        onNotice: (title, message) {
           unawaited(prompts.push(WarningPrompt(title: title, message: message)));
           onAttention?.call();
         },
@@ -138,11 +170,21 @@ class SessionManager extends ChangeNotifier {
     if (_started) return;
     _started = true;
     _incomingSub = listener.incoming.listen(_onIncoming);
+    // Android: the user tapped Stop in the "screen is being shared" notice.
+    final android = _android;
+    if (android != null) {
+      _captureStopSub = android.captureStopRequests.listen((_) => unawaited(stopAllHostSessions()));
+    }
+    // The badge's Stop button ends every incoming session.
+    _badgeStopSub = badge.stopRequests.listen((_) => unawaited(stopAllHostSessions()));
     settings.addListener(_onSettingsChanged);
     await applySettings();
   }
 
-  void _onSettingsChanged() => unawaited(applySettings());
+  void _onSettingsChanged() {
+    unawaited(applySettings());
+    _syncBadge();
+  }
 
   /// Brings the listener, embedded TURN, port mappings and LAN responder in
   /// line with the settings. Serialised so rapid toggles cannot interleave.
@@ -153,25 +195,48 @@ class SessionManager extends ChangeNotifier {
     return _applying;
   }
 
+  /// UI strings for the current setting, independent of widget rebuild order.
+  S get _strings => S.forLanguage(
+        resolveLanguage(settings.language, PlatformDispatcher.instance.locale),
+      );
+
+  AndroidHostPlatform? get _android {
+    final p = platform;
+    return p is AndroidHostPlatform ? p : null;
+  }
+
   Future<void> _apply() async {
     if (_disposed) return;
+    final android = _android;
     if (settings.allowIncoming) {
-      if (_lastUpnp != settings.upnp || !listener.isListening) {
-        await connectivity.start(portMapping: settings.upnp);
-        _lastUpnp = settings.upnp;
+      if (!listener.isListening) {
+        await listener.start(port: listenerPort, address: listenerAddress);
       }
-      if (!listener.isListening) await listener.start();
       if (settings.lanDiscovery) {
         await lan.startResponder();
       } else {
         await lan.stopResponder();
       }
+      // Router discovery can take seconds; the listener and LAN access must
+      // not wait for it, and the UI follows `connectivity.report` instead.
+      if (_lastUpnp != settings.upnp) {
+        _lastUpnp = settings.upnp;
+        unawaited(connectivity.start(portMapping: settings.upnp));
+      }
+      if (android != null) {
+        unawaited(android.startPresence());
+        unawaited(android.acquireMulticastLock());
+      }
     } else {
       await stopAllHostSessions();
       await listener.stop();
       await lan.stopResponder();
-      await connectivity.stop();
       _lastUpnp = null;
+      unawaited(connectivity.stop());
+      if (android != null) {
+        unawaited(android.stopPresence());
+        unawaited(android.releaseMulticastLock());
+      }
     }
     notifyListeners();
   }
@@ -226,11 +291,18 @@ class SessionManager extends ChangeNotifier {
       turnHost: turnHost,
       reversePermissions: reversePermissions,
     );
+    trackHostSession(session);
+    onAttention?.call();
+    await session.start();
+  }
+
+  /// Registers an incoming session (badge, banner, history). Public so tests
+  /// can drive a session without a PeerConnection.
+  @visibleForTesting
+  void trackHostSession(HostSession session) {
     _track(session);
     _hosts.add(session);
     notifyListeners();
-    onAttention?.call();
-    await session.start();
   }
 
   Future<void> _handleReverseOffer(IncomingPeer incoming) async {
@@ -284,7 +356,7 @@ class SessionManager extends ChangeNotifier {
     Permissions permissions = const Permissions(),
   }) async {
     if (!platform.hostSupported) {
-      throw const ConnectException('This device cannot be controlled remotely.');
+      throw ConnectException(S.current.t('err.noHost'));
     }
     final dial = await _dialVerified(target, HelloWant.beControlled);
     final session = HostSession(
@@ -296,9 +368,7 @@ class SessionManager extends ChangeNotifier {
       turnHost: dial.connectedTo,
       reversePermissions: permissions,
     );
-    _track(session);
-    _hosts.add(session);
-    notifyListeners();
+    trackHostSession(session);
     await session.start();
     return session;
   }
@@ -308,9 +378,7 @@ class SessionManager extends ChangeNotifier {
   Future<DialResult> _dialVerified(ConnectTarget target, HelloWant want) async {
     final addresses = _resolveAddresses(target);
     if (addresses.isEmpty) {
-      throw const ConnectException(
-        'No address is known for this ID yet. Ask for an invite link, or enter ID@address.',
-      );
+      throw ConnectException(S.current.t('err.noAddress'));
     }
     var expected = target.id;
     try {
@@ -321,7 +389,7 @@ class SessionManager extends ChangeNotifier {
         if (firstContact) {
           onAttention?.call();
           final ok = await prompts.push(FirstContactPrompt(peer: probed, address: addresses.first));
-          if (!ok) throw const ConnectException('Cancelled.', cancelled: true);
+          if (!ok) throw ConnectException(S.current.t('err.cancelled'), cancelled: true);
         }
         expected = probed.id;
       }
@@ -335,15 +403,28 @@ class SessionManager extends ChangeNotifier {
     } on DialException catch (e) {
       if (e.kind == DialFailure.identityMismatch) {
         unawaited(prompts.push(WarningPrompt(
-          title: 'Identity mismatch',
-          message: 'The device at ${addresses.first} is not the one with the ID you '
-              'entered. This can mean the address changed hands, or that someone is '
-              'intercepting the connection. Nothing was sent to it.',
+          title: S.current.t('warn.mismatch.title'),
+          message: S.current.t('warn.mismatch.body', {'address': addresses.first}),
         )));
         onAttention?.call();
       }
-      throw ConnectException(e.message, kind: e.kind);
+      throw ConnectException(_dialMessage(e), kind: e.kind);
     }
+  }
+
+  static String _dialMessage(DialException e) {
+    final s = S.current;
+    return switch (e.kind) {
+      DialFailure.unreachable => s.t('err.unreachable'),
+      DialFailure.identityMismatch => s.t('err.mismatch'),
+      DialFailure.badSignature => s.t('err.badSignature'),
+      DialFailure.notAccepting => s.t('err.notAccepting'),
+      DialFailure.busy => s.t('err.busy'),
+      DialFailure.rateLimited => s.t('err.rateLimited'),
+      DialFailure.version => s.t('err.version'),
+      DialFailure.timeout => s.t('err.timeout'),
+      DialFailure.protocol => s.t('err.protocol'),
+    };
   }
 
   List<NetAddress> _resolveAddresses(ConnectTarget target) {
@@ -366,16 +447,61 @@ class SessionManager extends ChangeNotifier {
   // --- bookkeeping -------------------------------------------------------
 
   void _track(SessionBase s) {
-    s.addListener(notifyListeners);
+    s.addListener(_onSessionChanged);
     s.onEnded = _onSessionEnded;
   }
 
+  void _onSessionChanged() {
+    notifyListeners();
+    _syncBadge();
+  }
+
+  /// Shows, updates or (only when no incoming session sees the screen any
+  /// more) dismisses the native badge. There is intentionally no other path
+  /// that calls `dismiss`.
+  void _syncBadge() {
+    final live = liveHostSessions;
+    if (live.isEmpty) {
+      if (_lastBadge != null) {
+        _lastBadge = null;
+        unawaited(badge.dismiss());
+      }
+      return;
+    }
+    final strings = _strings;
+    final names = [for (final h in live) h.peer.name];
+    final since = live
+        .map((h) => h.activeSince ?? h.startedAt)
+        .reduce((a, b) => a.isBefore(b) ? a : b);
+    final next = BadgeState(
+      peers: names,
+      label: live.length == 1
+          ? strings.t('badge.one', {'name': names.first})
+          : strings.plural('badge.many', live.length),
+      stopLabel: strings.t('badge.stop'),
+      since: since,
+      controlActive: live.any((h) => h.controlEnabled),
+    );
+    final last = _lastBadge;
+    if (last != null &&
+        last.label == next.label &&
+        last.stopLabel == next.stopLabel &&
+        last.since == next.since &&
+        last.controlActive == next.controlActive &&
+        listEquals(last.peers, next.peers)) {
+      return;
+    }
+    _lastBadge = next;
+    unawaited(badge.show(next));
+  }
+
   void _onSessionEnded(SessionBase s) {
-    s.removeListener(notifyListeners);
+    s.removeListener(_onSessionChanged);
     if (s is HostSession) {
       _hosts.remove(s);
       prompts.cancelWhere((p) => p is AcceptRequestPrompt && p.peer.key == s.peer.key);
     }
+    _syncBadge();
     unawaited(history.add(SessionRecord(
       sid: s.sid,
       incoming: s.isHost,
@@ -418,6 +544,8 @@ class SessionManager extends ChangeNotifier {
     _disposed = true;
     settings.removeListener(_onSettingsChanged);
     unawaited(_incomingSub?.cancel());
+    unawaited(_captureStopSub?.cancel());
+    unawaited(_badgeStopSub?.cancel());
     unawaited(listener.dispose());
     super.dispose();
   }

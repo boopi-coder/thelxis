@@ -1,3 +1,5 @@
+import '../l10n/strings.dart';
+
 /// Groups a 9-digit device id as `482 913 057`. Other strings pass through.
 String formatDeviceId(String? id) {
   if (id == null || id.isEmpty) return '—';
@@ -19,12 +21,14 @@ String formatBitrate(double bitsPerSecond) {
   return '${(bitsPerSecond / 1e3).round()} kbps';
 }
 
-/// Short relative time such as `just now`, `5 min ago`, `3 h ago`, `2 d ago`.
-String formatLastSeen(DateTime? time, {DateTime? now}) {
-  if (time == null) return 'never';
+/// Short relative time such as `just now`, `5 min ago`, `3 h ago`, `2 d ago`
+/// in the current UI language.
+String formatLastSeen(DateTime? time, {DateTime? now, S? strings}) {
+  final s = strings ?? S.current;
+  if (time == null) return s.t('time.never');
   final diff = (now ?? DateTime.now()).difference(time);
-  if (diff.inSeconds < 45) return 'just now';
-  if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
-  if (diff.inHours < 24) return '${diff.inHours} h ago';
-  return '${diff.inDays} d ago';
+  if (diff.inSeconds < 45) return s.t('time.justNow');
+  if (diff.inMinutes < 60) return s.plural('time.min', diff.inMinutes);
+  if (diff.inHours < 24) return s.plural('time.hour', diff.inHours);
+  return s.plural('time.day', diff.inDays);
 }

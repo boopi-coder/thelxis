@@ -5,8 +5,11 @@ import '../../core/identity.dart';
 import '../../core/settings.dart';
 import '../../core/system_info.dart';
 import '../../desktop/desktop_integration.dart';
+import '../../l10n/strings.dart';
 import '../../session/host_credentials.dart';
 import '../home/diagnostics_screen.dart';
+import '../../update/ui/update_settings_section.dart';
+import '../../update/update_service.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'permanent_password_dialog.dart';
@@ -18,119 +21,127 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = context.watch<AppSettings>();
+    final s = context.s;
+    final st = context.watch<AppSettings>();
     final creds = context.watch<HostCredentials>();
     final desktop = context.read<DesktopIntegration>();
     final info = context.read<SystemInfo>();
     final identity = context.read<Identity>();
-    final perms = s.defaultPermissions;
+    final perms = st.defaultPermissions;
 
     return PageScroll(
       maxWidth: 760,
       children: [
-        const SectionHeader('Device'),
+        PageTitle(s.t('settings.title')),
+        SectionHeader(s.t('settings.device')),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(Gap.l),
-            child: _DeviceNameField(initial: s.deviceName, onSaved: s.setDeviceName),
+            child: _DeviceNameField(initial: st.deviceName, onSaved: st.setDeviceName),
           ),
         ),
-        const SectionHeader('Security'),
+        SectionHeader(s.t('settings.security')),
         Card(
           child: Column(
             children: [
               ListTile(
                 leading: const Icon(Icons.password_rounded),
-                title: const Text('Permanent password'),
-                subtitle: Text(s.hasPermanentPassword ? 'Set — for unattended access' : 'Not set'),
+                title: Text(s.t('settings.permanent')),
+                subtitle: Text(st.hasPermanentPassword ? s.t('settings.permanent.set') : s.t('settings.permanent.unset')),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextButton(
                       onPressed: () => showPermanentPasswordDialog(context, creds),
-                      child: Text(s.hasPermanentPassword ? 'Change' : 'Set'),
+                      child: Text(st.hasPermanentPassword ? s.t('settings.permanent.change') : s.t('settings.permanent.setBtn')),
                     ),
-                    if (s.hasPermanentPassword)
-                      TextButton(onPressed: creds.clearPermanentPassword, child: const Text('Remove')),
+                    if (st.hasPermanentPassword)
+                      TextButton(
+                        onPressed: creds.clearPermanentPassword,
+                        child: Text(s.t('settings.permanent.remove')),
+                      ),
                   ],
                 ),
               ),
               const Divider(),
-              SwitchListTile.adaptive(
+              SwitchListTile(
                 secondary: const Icon(Icons.how_to_reg_outlined),
-                title: const Text('Ask before every connection'),
-                subtitle: const Text('Even with the right password, someone here must accept.'),
-                value: s.requireApproval,
-                onChanged: s.setRequireApproval,
+                title: Text(s.t('settings.approval')),
+                subtitle: Text(s.t('settings.approval.hint')),
+                value: st.requireApproval,
+                onChanged: st.setRequireApproval,
               ),
-              SwitchListTile.adaptive(
+              SwitchListTile(
                 secondary: const Icon(Icons.autorenew_rounded),
-                title: const Text('New one-time password after each session'),
-                value: s.rotateOneTimePassword,
-                onChanged: s.setRotateOneTimePassword,
+                title: Text(s.t('settings.rotate')),
+                value: st.rotateOneTimePassword,
+                onChanged: st.setRotateOneTimePassword,
               ),
               const Divider(),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(Gap.l, Gap.m, Gap.l, 0),
-                child: Align(alignment: Alignment.centerLeft, child: Text('Default permissions')),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Gap.l, Gap.m, Gap.l, 0),
+                child: Align(alignment: Alignment.centerLeft, child: Text(s.t('settings.defaults'))),
               ),
-              SwitchListTile.adaptive(
+              SwitchListTile(
                 secondary: const Icon(Icons.mouse_outlined),
-                title: const Text('Allow control (mouse and keyboard)'),
-                subtitle: const Text('Off means viewers can only watch.'),
+                title: Text(s.t('settings.defaults.control')),
+                subtitle: Text(s.t('settings.defaults.control.hint')),
                 value: perms.control,
-                onChanged: (v) => s.setDefaultPermissions(perms.copyWith(control: v)),
+                onChanged: (v) => st.setDefaultPermissions(perms.copyWith(control: v)),
               ),
-              SwitchListTile.adaptive(
+              SwitchListTile(
                 secondary: const Icon(Icons.content_paste_rounded),
-                title: const Text('Allow clipboard sync'),
+                title: Text(s.t('settings.defaults.clipboard')),
                 value: perms.clipboard,
-                onChanged: (v) => s.setDefaultPermissions(perms.copyWith(clipboard: v)),
+                onChanged: (v) => st.setDefaultPermissions(perms.copyWith(clipboard: v)),
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.folder_copy_outlined),
+                title: Text(s.t('settings.defaults.files')),
+                value: perms.files,
+                onChanged: (v) => st.setDefaultPermissions(perms.copyWith(files: v)),
               ),
             ],
           ),
         ),
-        const SectionHeader('Trusted devices'),
+        SectionHeader(s.t('settings.trusted')),
         const Card(child: TrustedDevicesSection()),
-        const SectionHeader('Connectivity'),
+        SectionHeader(s.t('settings.connectivity')),
         Card(
           child: Column(
             children: [
-              SwitchListTile.adaptive(
+              SwitchListTile(
                 secondary: const Icon(Icons.login_rounded),
-                title: const Text('Allow incoming connections'),
-                subtitle: const Text('Turning this off also stops UPnP mapping and the embedded relay.'),
-                value: s.allowIncoming,
-                onChanged: s.setAllowIncoming,
+                title: Text(s.t('settings.incoming')),
+                subtitle: Text(s.t('settings.incoming.hint')),
+                value: st.allowIncoming,
+                onChanged: st.setAllowIncoming,
               ),
-              SwitchListTile.adaptive(
+              SwitchListTile(
                 secondary: const Icon(Icons.router_outlined),
-                title: const Text('Automatic port mapping (UPnP, NAT-PMP)'),
-                subtitle: const Text('Asks your router to make this device reachable from the internet.'),
-                value: s.upnp,
-                onChanged: s.allowIncoming ? s.setUpnp : null,
+                title: Text(s.t('settings.upnp')),
+                subtitle: Text(s.t('settings.upnp.hint')),
+                value: st.upnp,
+                onChanged: st.allowIncoming ? st.setUpnp : null,
               ),
-              SwitchListTile.adaptive(
+              SwitchListTile(
                 secondary: const Icon(Icons.wifi_find_rounded),
-                title: const Text('Show this device on the local network'),
-                subtitle: const Text('Answers discovery requests from other Thelxis apps on your LAN.'),
-                value: s.lanDiscovery,
-                onChanged: s.setLanDiscovery,
+                title: Text(s.t('settings.lan')),
+                subtitle: Text(s.t('settings.lan.hint')),
+                value: st.lanDiscovery,
+                onChanged: st.setLanDiscovery,
               ),
-              SwitchListTile.adaptive(
+              SwitchListTile(
                 secondary: const Icon(Icons.public_rounded),
-                title: const Text('Use a public STUN server'),
-                subtitle: const Text(
-                  'Off by default. Helps when both sides are behind NAT, but tells the '
-                  'STUN server (Google) your IP address. No media or content is sent.',
-                ),
-                value: s.publicStun,
-                onChanged: s.setPublicStun,
+                title: Text(s.t('settings.stun')),
+                subtitle: Text(s.t('settings.stun.hint')),
+                value: st.publicStun,
+                onChanged: st.setPublicStun,
               ),
               ListTile(
                 leading: const Icon(Icons.network_check_rounded),
-                title: const Text('Diagnostics'),
-                subtitle: const Text('Why can or can\'t others reach this device?'),
+                title: Text(s.t('settings.diagnostics')),
+                subtitle: Text(s.t('settings.diagnostics.hint')),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => const DiagnosticsScreen()),
@@ -139,61 +150,80 @@ class SettingsScreen extends StatelessWidget {
             ],
           ),
         ),
-        const SectionHeader('Appearance'),
+        SectionHeader(s.t('settings.appearance')),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(Gap.l),
-            child: SegmentedButton<ThemeMode>(
-              segments: const [
-                ButtonSegment(value: ThemeMode.dark, icon: Icon(Icons.dark_mode_outlined), label: Text('Dark')),
-                ButtonSegment(value: ThemeMode.light, icon: Icon(Icons.light_mode_outlined), label: Text('Light')),
-                ButtonSegment(value: ThemeMode.system, icon: Icon(Icons.brightness_auto_outlined), label: Text('System')),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s.t('settings.theme'), style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: Gap.s),
+                SegmentedButton<ThemeMode>(
+                  segments: [
+                    ButtonSegment(value: ThemeMode.dark, icon: const Icon(Icons.dark_mode_outlined), label: Text(s.t('settings.theme.dark'))),
+                    ButtonSegment(value: ThemeMode.light, icon: const Icon(Icons.light_mode_outlined), label: Text(s.t('settings.theme.light'))),
+                    ButtonSegment(value: ThemeMode.system, icon: const Icon(Icons.brightness_auto_outlined), label: Text(s.t('settings.theme.system'))),
+                  ],
+                  selected: {st.themeMode},
+                  onSelectionChanged: (v) => st.setThemeMode(v.first),
+                ),
+                const SizedBox(height: Gap.l),
+                Text(s.t('settings.language'), style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: Gap.s),
+                SegmentedButton<String>(
+                  segments: [
+                    ButtonSegment(value: kLanguageSystem, icon: const Icon(Icons.translate_rounded), label: Text(s.t('settings.language.system'))),
+                    const ButtonSegment(value: 'en', label: Text('English')),
+                    const ButtonSegment(value: 'ru', label: Text('Русский')),
+                  ],
+                  selected: {st.language},
+                  onSelectionChanged: (v) => st.setLanguage(v.first),
+                ),
               ],
-              selected: {s.themeMode},
-              onSelectionChanged: (v) => s.setThemeMode(v.first),
             ),
           ),
         ),
         if (desktop.isDesktop) ...[
-          const SectionHeader('Startup'),
+          SectionHeader(s.t('settings.startup')),
           Card(
-            child: SwitchListTile.adaptive(
+            child: SwitchListTile(
               secondary: const Icon(Icons.power_settings_new_rounded),
-              title: const Text('Start Thelxis when I sign in'),
-              subtitle: const Text('Keeps this device reachable after a restart.'),
-              value: s.launchAtStartup,
+              title: Text(s.t('settings.autostart')),
+              subtitle: Text(s.t('settings.autostart.hint')),
+              value: st.launchAtStartup,
               onChanged: (v) async {
-                await s.setLaunchAtStartup(v);
+                await st.setLaunchAtStartup(v);
                 await desktop.setLaunchAtStartup(v);
               },
             ),
           ),
         ],
-        const SectionHeader('About'),
+        SectionHeader(s.t('settings.updates')),
+        UpdateSettingsSection(service: context.read<UpdateService>()),
+        SectionHeader(s.t('settings.about')),
         Card(
           child: Column(
             children: [
               ListTile(
                 leading: const Icon(Icons.info_outline_rounded),
                 title: const Text('Thelxis'),
-                subtitle: Text('Version ${info.appVersion} · ${info.os} ${info.arch}'),
+                subtitle: Text(s.t('settings.version', {'version': info.appVersion, 'os': info.os, 'arch': info.arch})),
               ),
               ListTile(
                 leading: const Icon(Icons.fingerprint_rounded),
-                title: const Text('Your Thelxis ID'),
+                title: Text(s.t('home.yourId')),
                 subtitle: Text(identity.formattedId),
                 trailing: IconButton(
+                  tooltip: s.t('common.copy'),
                   icon: const Icon(Icons.copy_rounded),
-                  onPressed: () => copyToClipboard(context, identity.formattedId, 'ID'),
+                  onPressed: () => copyToClipboard(context, identity.formattedId, s.t('home.idNoun')),
                 ),
               ),
-              const ListTile(
-                leading: Icon(Icons.lock_outline_rounded),
-                title: Text('No servers, no accounts'),
-                subtitle: Text(
-                  'Devices connect directly and everything is end-to-end encrypted. '
-                  'Your identity key never leaves this device.',
-                ),
+              ListTile(
+                leading: const Icon(Icons.lock_outline_rounded),
+                title: Text(s.t('settings.noServers')),
+                subtitle: Text(s.t('settings.noServers.hint')),
               ),
             ],
           ),
@@ -224,16 +254,17 @@ class _DeviceNameFieldState extends State<_DeviceNameField> {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.s;
     return TextField(
       controller: _c,
       maxLength: 48,
       onSubmitted: widget.onSaved,
       onTapOutside: (_) => widget.onSaved(_c.text),
-      decoration: const InputDecoration(
-        labelText: 'Device name',
-        helperText: 'Shown to the people who connect to this device.',
+      decoration: InputDecoration(
+        labelText: s.t('settings.deviceName'),
+        helperText: s.t('settings.deviceName.hint'),
         counterText: '',
-        prefixIcon: Icon(Icons.badge_outlined),
+        prefixIcon: const Icon(Icons.badge_outlined),
       ),
     );
   }

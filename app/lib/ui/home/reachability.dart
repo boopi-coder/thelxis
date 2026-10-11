@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/strings.dart';
 import '../../net/connectivity/connectivity.dart';
 import '../widgets/common.dart';
 
@@ -17,71 +18,80 @@ class ReachabilitySummary {
 ReachabilitySummary summarizeReachability({
   required bool allowIncoming,
   required ReachabilityReport report,
+  S? strings,
 }) {
+  final s = strings ?? S.current;
   if (!allowIncoming) {
-    return const ReachabilitySummary(
-      'Not accepting',
+    return ReachabilitySummary(
+      s.t('reach.off'),
       PillTone.neutral,
-      'Incoming connections are switched off. Nobody can connect to this device.',
+      s.t('reach.off.detail'),
     );
   }
   if (!report.listening) {
-    return const ReachabilitySummary(
-      'Listener unavailable',
+    return ReachabilitySummary(
+      s.t('reach.noListener'),
       PillTone.bad,
-      'The signaling port could not be opened. Another program may be using port 47100.',
+      s.t('reach.noListener.detail'),
     );
   }
   if (report.reachableIPv4 || report.reachableIPv6) {
-    return const ReachabilitySummary(
-      'Reachable from internet',
+    return ReachabilitySummary(
+      s.t('reach.internet'),
       PillTone.good,
-      'Devices on the internet can connect directly to this one.',
+      s.t('reach.internet.detail'),
     );
   }
   if (report.cgnat) {
-    return const ReachabilitySummary(
-      'LAN only',
+    return ReachabilitySummary(
+      s.t('reach.lan'),
       PillTone.warn,
-      'Your provider shares one public address between customers (CGNAT), so '
-          'inbound IPv4 is not possible. IPv6, a VPN, or a reverse connection can still work.',
+      s.t('reach.cgnat.detail'),
     );
   }
-  return const ReachabilitySummary(
-    'LAN only',
+  return ReachabilitySummary(
+    s.t('reach.lan'),
     PillTone.warn,
-    'Devices on your network can connect. For internet access, enable UPnP '
-        'or forward ports 47100 (TCP and UDP) and 47101 (TCP) on your router.',
+    s.t('reach.lan.detail'),
   );
 }
 
-/// Pill + optional "why?" action; reads the live connectivity report.
+/// Pill + "why?" affordance; reads the live connectivity report.
 class ReachabilityPill extends StatelessWidget {
   const ReachabilityPill({
     super.key,
     required this.connectivity,
     required this.allowIncoming,
     required this.onWhy,
+    this.onGradient = false,
   });
 
   final Connectivity connectivity;
   final bool allowIncoming;
   final VoidCallback onWhy;
+  final bool onGradient;
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ReachabilityReport>(
       valueListenable: connectivity.report,
       builder: (context, report, _) {
-        final s = summarizeReachability(allowIncoming: allowIncoming, report: report);
+        final summary = summarizeReachability(
+          allowIncoming: allowIncoming,
+          report: report,
+          strings: context.s,
+        );
         return StatusPill(
-          label: s.label,
-          tone: s.tone,
+          label: summary.label,
+          tone: summary.tone,
           onTap: onWhy,
+          onGradient: onGradient,
           trailing: Icon(
             Icons.help_outline_rounded,
             size: 16,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            color: onGradient
+                ? Colors.white70
+                : Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         );
       },

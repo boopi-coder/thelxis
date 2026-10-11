@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/address_book.dart';
 import '../../core/thelxis_id.dart';
+import '../../l10n/strings.dart';
 import '../../net/connect_target.dart';
 import '../../net/discovery.dart';
 import '../../net/net_address.dart';
@@ -27,15 +28,17 @@ List<PaletteItem> paletteItems({
   required String query,
   required List<AddressBookEntry> entries,
   required List<DiscoveredPeer> peers,
+  S? strings,
 }) {
+  final s = strings ?? S.current;
   final q = query.trim().toLowerCase();
   final items = <PaletteItem>[];
   final parsed = q.isEmpty || !_looksLikeTarget(query) ? null : parseConnectInput(query);
   if (parsed != null && parsed.isOk) {
     final t = parsed.target!;
     items.add(PaletteItem(
-      title: 'Connect to ${query.trim()}',
-      subtitle: t.hasId ? 'Verified by Thelxis ID' : 'New device — you will confirm its ID',
+      title: s.t('palette.connectTo', {'target': query.trim()}),
+      subtitle: t.hasId ? s.t('palette.verified') : s.t('palette.newDevice'),
       icon: Icons.bolt_rounded,
       target: t,
     ));
@@ -57,7 +60,7 @@ List<PaletteItem> paletteItems({
     if (q.isEmpty || hay.contains(q)) {
       items.add(PaletteItem(
         title: p.name,
-        subtitle: '${p.formattedId} · ${p.address} · on this network',
+        subtitle: '${p.formattedId} · ${p.address} · ${s.t('devices.onNetwork')}',
         icon: osIcon(p.os),
         target: ConnectTarget(id: p.id, name: p.name, addresses: [NetAddress(p.host, p.port)]),
       ));
@@ -111,6 +114,7 @@ class _CommandPaletteState extends State<_CommandPalette> {
         query: _controller.text,
         entries: widget.book.entries,
         peers: widget.lan.peers,
+        strings: context.s,
       );
 
   void _pick(PaletteItem item) {
@@ -157,18 +161,18 @@ class _CommandPaletteState extends State<_CommandPalette> {
                   onSubmitted: (_) {
                     if (items.isNotEmpty) _pick(items[selected]);
                   },
-                  decoration: const InputDecoration(
-                    hintText: 'Jump to a device, or paste an address or invite link',
-                    prefixIcon: Icon(Icons.search_rounded),
+                  decoration: InputDecoration(
+                    hintText: context.s.t('palette.hint'),
+                    prefixIcon: const Icon(Icons.search_rounded),
                   ),
                 ),
               ),
             ),
             Flexible(
               child: items.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('No matches'),
+                  ? Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(context.s.t('devices.noMatches')),
                     )
                   : ListView.builder(
                       shrinkWrap: true,

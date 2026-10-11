@@ -7,12 +7,19 @@ import '../protocol/input_messages.dart';
 /// final position (trailing edge), and tracks held keys/buttons so they can be
 /// released when focus is lost.
 class InputEncoder {
-  InputEncoder(this._send, {this.maxRateHz = 120, Stopwatch? clock})
-      : _clock = clock ?? (Stopwatch()..start());
+  InputEncoder(this._send, {this.maxRateHz = 120, int Function()? nowMicros})
+      : _now = nowMicros ?? _stopwatchClock();
 
   final void Function(InputMessage message) _send;
   final int maxRateHz;
-  final Stopwatch _clock;
+
+  /// Monotonic microseconds; injectable so tests do not depend on wall time.
+  final int Function() _now;
+
+  static int Function() _stopwatchClock() {
+    final sw = Stopwatch()..start();
+    return () => sw.elapsedMicroseconds;
+  }
 
   final Set<int> _keys = {};
   final Set<int> _buttons = {};
@@ -37,7 +44,7 @@ class InputEncoder {
     _lastX = x;
     _lastY = y;
     _pendingMove = MouseMove(x, y);
-    final elapsed = _clock.elapsedMicroseconds - _lastMoveUs;
+    final elapsed = _now() - _lastMoveUs;
     if (elapsed >= _intervalUs) {
       _flushMove();
     } else {
@@ -66,7 +73,7 @@ class InputEncoder {
   void wheel(double dx, double dy) {
     _pendingDx += dx;
     _pendingDy += dy;
-    final elapsed = _clock.elapsedMicroseconds - _lastWheelUs;
+    final elapsed = _now() - _lastWheelUs;
     if (elapsed >= _intervalUs) {
       _flushWheel();
     } else {
@@ -129,7 +136,7 @@ class InputEncoder {
     final m = _pendingMove;
     if (m == null) return;
     _pendingMove = null;
-    _lastMoveUs = _clock.elapsedMicroseconds;
+    _lastMoveUs = _now();
     _send(m);
   }
 
@@ -142,7 +149,7 @@ class InputEncoder {
     final dy = _pendingDy.clamp(-1200.0, 1200.0);
     _pendingDx = 0;
     _pendingDy = 0;
-    _lastWheelUs = _clock.elapsedMicroseconds;
+    _lastWheelUs = _now();
     _send(Wheel(dx, dy));
   }
 }

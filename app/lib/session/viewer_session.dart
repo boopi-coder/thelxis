@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../core/log.dart';
 import '../core/password_proof.dart';
 import '../core/settings.dart';
+import '../l10n/strings.dart';
 import '../net/net_address.dart';
 import '../net/signaling_channel.dart';
 import '../protocol/control_messages.dart';
@@ -99,6 +101,36 @@ class ViewerSession extends SessionBase {
   bool _signalingDetached = false;
   final List<String> chatLog = [];
 
+  // --- test seams: lets tests drive the protocol without a PeerConnection ---
+
+  /// Replaces reading the DTLS fingerprints from the PeerConnection.
+  @visibleForTesting
+  Future<({String? local, String? remote})> Function()? debugFingerprints;
+
+  /// Observes every control message this session sends.
+  @visibleForTesting
+  void Function(Map<String, dynamic> message)? debugControlTap;
+
+  /// Observes every input message this session sends (after view-only checks).
+  @visibleForTesting
+  void Function(Map<String, dynamic> message)? debugInputTap;
+
+  /// Feeds a control-channel message as if it arrived from the host.
+  @visibleForTesting
+  void debugReceiveControl(Map<String, dynamic> json) =>
+      _onControlMessage(RTCDataChannelMessage(jsonEncode(json)));
+
+  /// Pretends the renderer drew its first frame.
+  @visibleForTesting
+  void debugFirstFrame() {
+    _frameSeen = true;
+    notifyListeners();
+  }
+
+  /// Feeds an ICE connection state as if the PeerConnection reported it.
+  @visibleForTesting
+  void debugIceState(RTCIceConnectionState state) => _onIceState(state);
+
   @override
   bool get isHost => false;
 
@@ -172,7 +204,7 @@ class ViewerSession extends SessionBase {
             _pending.add(c);
           }
         case RemoteBye(:final reason):
-          _notice = reason == 'denied' ? 'The host denied the connection.' : _notice;
+          _notice = reason == 'denied' ? S.current.t('viewer.denied') : _notice;
           await end(reason == 'denied' ? 'denied' : 'remote');
         case SignatureFailure(:final message):
           _notice = message;
@@ -251,6 +283,8 @@ class ViewerSession extends SessionBase {
         dc.onMessage = _onControlMessage;
       case 'input':
         _inputChannel = dc;
+      case 'files':
+        filesChannel = dc;
     }
   }
 
@@ -270,8 +304,9 @@ class ViewerSession extends SessionBase {
         _activeDisplay = active;
         notifyListeners();
       case PermissionsMessage(:final permissions):
-        _permissions = permissions;
+        // Release first: once control is off, `_sendInput` drops everything.
         if (!permissions.control) encoder.releaseAll();
+        _permissions = permissions;
         if (!permissions.clipboard) _clipboard?.stop();
         notifyListeners();
       case ClipboardMessage(:final text):
@@ -316,14 +351,14 @@ class ViewerSession extends SessionBase {
   Future<void> submitPassword(String password) async {
     if (_passwordBusy || _ended) return;
     final pc = _pc;
-    if (pc == null) return;
+    if (pc == null && debugFingerprints == null) return;
     _passwordBusy = true;
     try {
-      final fps = await readFingerprints(pc);
+      final fps = await (debugFingerprints?.call() ?? readFingerprints(pc!));
       final local = fps.local;
       final remote = fps.remote;
       if (local == null || remote == null) {
-        _promptUser(error: 'The secure channel is not ready yet. Try again.');
+        _promptUser(error: S.current.t('viewer.notReady'));
         return;
       }
       final key = await derivePasswordKey(password, peer.id);
@@ -345,7 +380,7 @@ class ViewerSession extends SessionBase {
   /// Asks the host's user to accept this connection.
   void requestAccess() {
     _authPrompt = null;
-    _notice = 'Waiting for the other side to accept…';
+    _notice = S.current.t('viewer.waitingAccept');
     setPhase(SessionPhase.awaitingApproval);
     _sendControl(AuthMessage.request(env.userName));
   }
@@ -365,16 +400,18 @@ class ViewerSession extends SessionBase {
         _promptUser();
       case 'bad_password':
         if (r.retry) {
-          _promptUser(error: 'Wrong password. Try again.');
+          _promptUser(error: S.current.t('viewer.wrongPassword'));
         } else {
-          _failAuth('Wrong password.');
+          _failAuth(S.current.t('viewer.wrongPassword.final'));
         }
       case 'locked':
-        _failAuth('Too many wrong attempts. The host locked password entry for 5 minutes.');
+        _failAuth(S.current.t('viewer.locked'));
       case 'denied':
-        _failAuth('The host denied the connection.', reason: 'denied');
+        _failAuth(S.current.t('viewer.denied'), reason: 'denied');
+      case 'not_allowed':
+        _failAuth(S.current.t('viewer.notAllowed'), reason: 'denied');
       default:
-        _failAuth('This device is not allowed to connect.');
+        _failAuth(S.current.t('viewer.refused'));
     }
   }
 
@@ -396,8 +433,8 @@ class ViewerSession extends SessionBase {
   }
 
   void setViewOnly(bool value) {
-    _viewOnly = value;
     if (value) encoder.releaseAll();
+    _viewOnly = value;
     notifyListeners();
   }
 
@@ -423,10 +460,15 @@ class ViewerSession extends SessionBase {
     await _clipboard!.start();
   }
 
-  void _sendControl(ControlMessage m) => unawaited(sendJson(_control, m.toJson()));
+  void _sendControl(ControlMessage m) {
+    final json = m.toJson();
+    debugControlTap?.call(json);
+    unawaited(sendJson(_control, json));
+  }
 
   void _sendInput(InputMessage m) {
     if (viewOnly || _ended) return;
+    debugInputTap?.call(m.toJson());
     final dc = _inputChannel;
     if (dc == null || dc.state != RTCDataChannelState.RTCDataChannelOpen) return;
     unawaited(dc.send(RTCDataChannelMessage(jsonEncode(m.toJson()))));
@@ -453,8 +495,13 @@ class ViewerSession extends SessionBase {
       _ => 'user',
     });
     await _signalSub?.cancel();
+    // Let the last control message reach the wire before the channel closes.
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    final files = filesChannel;
+    filesChannel = null;
     try {
       renderer.srcObject = null;
+      await files?.close();
       await _control?.close();
       await _inputChannel?.close();
       await _pc?.close();

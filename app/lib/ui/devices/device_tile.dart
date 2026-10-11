@@ -5,6 +5,7 @@ import '../../core/format.dart';
 import '../../net/discovery.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../../l10n/strings.dart';
 
 enum DeviceAction { connect, viewOnly, reverse, edit, favorite, remove, addToBook }
 
@@ -31,18 +32,19 @@ class DeviceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.s;
     final t = Theme.of(context);
     final e = entry;
     final p = peer;
     final os = e?.os ?? p!.os;
     final title = e?.displayName ?? p!.name;
     final idText = e?.formattedId ?? p!.formattedId;
-    final subtitle = e != null
-        ? '$idText${online ? '  ·  on this network' : '  ·  ${formatLastSeen(e.lastConnected ?? e.lastSeen)}'}'
-        : '$idText  ·  ${p!.address}';
+    final status = e != null
+        ? (online ? s.t('devices.onNetwork') : formatLastSeen(e.lastConnected ?? e.lastSeen, strings: s))
+        : p!.address;
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
         onTap: () => onAction(DeviceAction.connect),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: Gap.l, vertical: Gap.m),
@@ -52,6 +54,7 @@ class DeviceTile extends StatelessWidget {
                 clipBehavior: Clip.none,
                 children: [
                   CircleAvatar(
+                    radius: 22,
                     backgroundColor: t.colorScheme.primaryContainer,
                     foregroundColor: t.colorScheme.onPrimaryContainer,
                     child: Icon(osIcon(os)),
@@ -59,13 +62,14 @@ class DeviceTile extends StatelessWidget {
                   Positioned(
                     right: -1,
                     bottom: -1,
-                    child: Container(
-                      width: 12,
-                      height: 12,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      width: 13,
+                      height: 13,
                       decoration: BoxDecoration(
                         color: online ? context.status.good : t.colorScheme.outline,
                         shape: BoxShape.circle,
-                        border: Border.all(color: t.colorScheme.surfaceContainerLow, width: 2),
+                        border: Border.all(color: t.colorScheme.surfaceContainerLow, width: 2.5),
                       ),
                     ),
                   ),
@@ -90,8 +94,18 @@ class DeviceTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      subtitle,
-                      style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                      idText,
+                      style: t.textTheme.bodySmall?.copyWith(
+                        color: t.colorScheme.onSurfaceVariant,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      status,
+                      style: t.textTheme.bodySmall?.copyWith(
+                        color: online ? context.status.good : t.colorScheme.onSurfaceVariant,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                     if (e != null && e.tags.isNotEmpty) ...[
@@ -116,26 +130,26 @@ class DeviceTile extends StatelessWidget {
                 ),
               ),
               IconButton.filledTonal(
-                tooltip: 'Connect',
+                tooltip: s.t('devices.connect'),
                 icon: const Icon(Icons.play_arrow_rounded),
                 onPressed: () => onAction(DeviceAction.connect),
               ),
               PopupMenuButton<DeviceAction>(
-                tooltip: 'More',
+                tooltip: s.t('common.more'),
                 onSelected: onAction,
                 itemBuilder: (_) => [
-                  const PopupMenuItem(value: DeviceAction.viewOnly, child: Text('Connect, view only')),
-                  const PopupMenuItem(value: DeviceAction.reverse, child: Text('Let them control this device')),
+                  PopupMenuItem(value: DeviceAction.viewOnly, child: Text(s.t('devices.connectViewOnly'))),
+                  PopupMenuItem(value: DeviceAction.reverse, child: Text(s.t('devices.reverse'))),
                   const PopupMenuDivider(),
                   if (e != null) ...[
                     PopupMenuItem(
                       value: DeviceAction.favorite,
-                      child: Text(e.favorite ? 'Remove from favorites' : 'Add to favorites'),
+                      child: Text(e.favorite ? s.t('devices.unfavorite') : s.t('devices.favorite')),
                     ),
-                    const PopupMenuItem(value: DeviceAction.edit, child: Text('Edit details')),
-                    const PopupMenuItem(value: DeviceAction.remove, child: Text('Remove')),
+                    PopupMenuItem(value: DeviceAction.edit, child: Text(s.t('devices.edit'))),
+                    PopupMenuItem(value: DeviceAction.remove, child: Text(s.t('devices.remove'))),
                   ] else
-                    const PopupMenuItem(value: DeviceAction.addToBook, child: Text('Add to address book')),
+                    PopupMenuItem(value: DeviceAction.addToBook, child: Text(s.t('devices.addToBook'))),
                 ],
               ),
             ],

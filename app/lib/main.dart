@@ -14,6 +14,7 @@ import 'desktop/desktop_impl.dart';
 import 'desktop/desktop_integration.dart';
 import 'net/connectivity/connectivity.dart';
 import 'platform/host_platform.dart';
+import 'platform/session_badge.dart';
 
 const _log = Logger('main');
 
@@ -34,13 +35,20 @@ Future<void> _boot(List<String> args) async {
   final systemInfo = await SystemInfo.load();
   final isDesktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
+  // `--minimized`: start hidden in the tray (used for login autostart).
+  // `--updated`: the OTA installer relaunched us; show the "updated" toast.
+  final startMinimized = args.contains('--minimized');
+  final updated = args.contains('--updated');
+
   late final AppServices services;
   DesktopIntegration? desktop;
   if (isDesktop) {
     desktop = await DesktopImpl.init(
       idText: identity.formattedId,
       launchAtStartupEnabled: prefs.getBool('launch_at_startup') ?? false,
+      startMinimized: startMinimized,
       onBeforeQuit: () => services.sessions.endAll(),
+      onToggleAllowIncoming: (allow) => services.settings.setAllowIncoming(allow),
     );
   }
 
@@ -50,6 +58,7 @@ Future<void> _boot(List<String> args) async {
     systemInfo: systemInfo,
     connectivity: Connectivity.instance,
     platform: HostPlatform.instance,
+    badge: SessionBadge.instance,
     desktop: desktop,
   );
 
@@ -57,5 +66,6 @@ Future<void> _boot(List<String> args) async {
   runApp(ThelxisApp(services: services, initialInvite: invite));
   // Networking starts after the first frame so the window appears instantly.
   unawaited(services.sessions.start());
+  unawaited(services.updates.start(updatedFlag: updated));
   if (kDebugMode) _log.i('Thelxis ${systemInfo.appVersion} started, ID ${identity.formattedId}');
 }

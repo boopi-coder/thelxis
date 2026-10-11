@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/trusted_devices.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../../l10n/strings.dart';
 
 /// Trusted Devices list: who may connect without a password or prompt, with
 /// per-device permissions and revoke.
@@ -12,14 +13,15 @@ class TrustedDevicesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.s;
     final trusted = context.watch<TrustedDevices>();
     final devices = trusted.devices;
     final t = Theme.of(context);
     if (devices.isEmpty) {
-      return const EmptyState(
+      return EmptyState(
         icon: Icons.verified_user_outlined,
-        title: 'No trusted devices',
-        message: 'Tick "Always allow this device" when accepting a request to add one.',
+        title: s.t('trusted.empty'),
+        message: s.t('trusted.empty.hint'),
       );
     }
     return Column(
@@ -34,15 +36,20 @@ class TrustedDevicesSection extends StatelessWidget {
               title: Text(d.name),
               subtitle: Text(d.formattedId),
               children: [
-                SwitchListTile.adaptive(
-                  title: const Text('May control'),
+                SwitchListTile(
+                  title: Text(s.t('trusted.control')),
                   value: d.permissions.control,
                   onChanged: (v) => trusted.updatePermissions(d.key, d.permissions.copyWith(control: v)),
                 ),
-                SwitchListTile.adaptive(
-                  title: const Text('May use the clipboard'),
+                SwitchListTile(
+                  title: Text(s.t('trusted.clipboard')),
                   value: d.permissions.clipboard,
                   onChanged: (v) => trusted.updatePermissions(d.key, d.permissions.copyWith(clipboard: v)),
+                ),
+                SwitchListTile(
+                  title: Text(s.t('trusted.files')),
+                  value: d.permissions.files,
+                  onChanged: (v) => trusted.updatePermissions(d.key, d.permissions.copyWith(files: v)),
                 ),
                 Align(
                   alignment: Alignment.centerRight,
@@ -52,10 +59,10 @@ class TrustedDevicesSection extends StatelessWidget {
                       style: TextButton.styleFrom(foregroundColor: t.colorScheme.error),
                       onPressed: () async {
                         await trusted.revoke(d.key);
-                        if (context.mounted) showMessage(context, '${d.name} is no longer trusted');
+                        if (context.mounted) showMessage(context, s.t('trusted.revoked', {'name': d.name}));
                       },
                       icon: const Icon(Icons.block_rounded),
-                      label: const Text('Revoke'),
+                      label: Text(s.t('trusted.revoke')),
                     ),
                   ),
                 ),

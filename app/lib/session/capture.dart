@@ -9,6 +9,10 @@ const _log = Logger('capture');
 
 /// Starts screen capture for a [HostDisplay].
 class ScreenCapture {
+  /// Whether a running capture can be restarted for another display or frame
+  /// rate. Desktop can; Android cannot (each capture needs fresh user consent).
+  static bool get canRetarget => !(Platform.isAndroid || Platform.isIOS);
+
   /// Desktop: picks the `desktopCapturer` screen source matching the display
   /// (by [HostDisplay.captureSourceId], else by index); Android: the system
   /// MediaProjection picker via `getDisplayMedia`.

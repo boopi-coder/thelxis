@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/thelxis_id.dart';
+import '../../l10n/strings.dart';
 import '../../session/session_base.dart';
 import '../../session/viewer_session.dart';
 import '../theme.dart';
@@ -19,30 +20,35 @@ class BusyOverlay extends StatelessWidget {
     return ColoredBox(
       color: Colors.black.withValues(alpha: dim),
       child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 22),
-          decoration: BoxDecoration(
-            color: t.colorScheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(strokeWidth: 3),
-              ),
-              const SizedBox(height: Gap.l),
-              Text(title, style: t.textTheme.titleMedium),
-              if (subtitle != null) ...[
-                const SizedBox(height: Gap.xs),
-                Text(
-                  subtitle!,
-                  style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Container(
+            margin: const EdgeInsets.all(Gap.xl),
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 22),
+            decoration: BoxDecoration(
+              color: t.colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(strokeWidth: 3),
                 ),
+                const SizedBox(height: Gap.l),
+                Text(title, style: t.textTheme.titleMedium, textAlign: TextAlign.center),
+                if (subtitle != null) ...[
+                  const SizedBox(height: Gap.xs),
+                  Text(
+                    subtitle!,
+                    textAlign: TextAlign.center,
+                    style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -57,22 +63,23 @@ class EndedOverlay extends StatelessWidget {
   final ViewerSession session;
   final VoidCallback onClose;
 
-  static String describe(ViewerSession s) {
-    final notice = s.notice;
+  static String describe(ViewerSession session) {
+    final s = S.current;
+    final notice = session.notice;
     if (notice != null && notice.isNotEmpty) return notice;
-    switch (s.endReason) {
+    switch (session.endReason) {
       case 'denied':
-        return 'The other side denied the connection.';
+        return s.t('ended.denied');
       case 'remote':
-        return '${s.peer.name} ended the session.';
+        return s.t('ended.remote', {'name': session.peer.name});
       case 'timeout':
-        return 'The connection timed out.';
+        return s.t('ended.timeout');
       case 'security':
-        return 'The connection was closed because it could not be verified.';
+        return s.t('ended.security');
       case 'error':
-        return 'The connection failed.';
+        return s.t('ended.error');
       default:
-        return 'Session ended.';
+        return s.t('ended.user');
     }
   }
 
@@ -98,7 +105,7 @@ class EndedOverlay extends StatelessWidget {
                 const SizedBox(height: Gap.m),
                 Text(describe(session), style: t.textTheme.titleMedium, textAlign: TextAlign.center),
                 const SizedBox(height: Gap.xl),
-                FilledButton(onPressed: onClose, child: const Text('Close')),
+                FilledButton(onPressed: onClose, child: Text(context.s.t('common.close'))),
               ],
             ),
           ),
@@ -173,7 +180,7 @@ class _PasswordPromptState extends State<PasswordPrompt> {
                   ),
                   const SizedBox(height: Gap.xs),
                   Text(
-                    'ID ${formatThelxisId(peer.id)}',
+                    context.s.t('session.idLine', {'id': formatThelxisId(peer.id)}),
                     style: t.textTheme.bodySmall?.copyWith(
                       color: t.colorScheme.onSurfaceVariant,
                       fontFeatures: const [FontFeature.tabularFigures()],
@@ -189,7 +196,7 @@ class _PasswordPromptState extends State<PasswordPrompt> {
                       autocorrect: false,
                       onSubmitted: (_) => _submit(),
                       decoration: InputDecoration(
-                        labelText: 'Password',
+                        labelText: context.s.t('session.password'),
                         errorText: prompt.error,
                         suffixIcon: IconButton(
                           icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
@@ -203,20 +210,20 @@ class _PasswordPromptState extends State<PasswordPrompt> {
                       onPressed: _busy ? null : _submit,
                       child: _busy
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Text('Connect'),
+                          : Text(context.s.t('connect.button')),
                     ),
                   ],
                   if (prompt.canRequest) ...[
                     const SizedBox(height: Gap.s),
                     OutlinedButton(
                       onPressed: widget.session.requestAccess,
-                      child: const Text('Request access instead'),
+                      child: Text(context.s.t('session.requestInstead')),
                     ),
                   ],
                   const SizedBox(height: Gap.s),
                   TextButton(
                     onPressed: () => widget.session.end('user'),
-                    child: const Text('Cancel'),
+                    child: Text(context.s.t('common.cancel')),
                   ),
                 ],
               ),
@@ -229,19 +236,20 @@ class _PasswordPromptState extends State<PasswordPrompt> {
 }
 
 /// Status text for phases before the picture is available.
-String phaseTitle(ViewerSession s) {
-  switch (s.phase) {
+String phaseTitle(ViewerSession session) {
+  final s = S.current;
+  switch (session.phase) {
     case SessionPhase.connecting:
-      return 'Connecting to ${s.peer.name}…';
+      return s.t('session.connectingTo', {'name': session.peer.name});
     case SessionPhase.authenticating:
-      return 'Authorizing…';
+      return s.t('session.authorizing');
     case SessionPhase.awaitingApproval:
-      return 'Waiting for ${s.peer.name} to accept…';
+      return s.t('session.waitingAccept', {'name': session.peer.name});
     case SessionPhase.active:
-      return 'Waiting for the first frame…';
+      return s.t('session.firstFrame');
     case SessionPhase.reconnecting:
-      return 'Reconnecting…';
+      return s.t('session.reconnecting');
     case SessionPhase.ended:
-      return 'Session ended';
+      return s.t('session.ended');
   }
 }

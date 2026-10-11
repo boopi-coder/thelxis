@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/settings.dart';
 import '../../desktop/desktop_integration.dart';
+import '../../l10n/strings.dart';
 import '../../session/session_base.dart';
 import '../../session/session_manager.dart';
 import '../../session/touch_gestures.dart';
@@ -13,6 +15,7 @@ import '../../session/viewer_session.dart';
 import '../shell_controller.dart';
 import 'connection_indicator.dart';
 import 'extra_keys_bar.dart';
+import 'files_slot.dart';
 import 'remote_surface.dart';
 import 'session_overlays.dart';
 import 'session_toolbar.dart';
@@ -47,6 +50,7 @@ class _SessionViewState extends State<SessionView> {
   bool _toolbarVisible = true;
   bool _showStats = false;
   bool _keyboardOpen = false;
+  bool _filesOpen = false;
   late TouchMode _touchMode;
   Size _viewport = Size.zero;
   Size _video = Size.zero;
@@ -58,10 +62,13 @@ class _SessionViewState extends State<SessionView> {
         ? TouchMode.direct
         : TouchMode.touchpad;
     _scheduleHide(const Duration(seconds: 5));
+    // Phones: the remote screen gets the whole display.
+    if (!_isDesktop) SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   }
 
   @override
   void dispose() {
+    if (!_isDesktop) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _hideTimer?.cancel();
     _view.dispose();
     super.dispose();
@@ -111,6 +118,14 @@ class _SessionViewState extends State<SessionView> {
     if (mounted) setState(() {});
   }
 
+  void _toggleFiles() {
+    if (_isDesktop) {
+      setState(() => _filesOpen = !_filesOpen);
+    } else {
+      showSessionFilesSheet(context, widget.session);
+    }
+  }
+
   void _setTouchMode(TouchMode mode) {
     setState(() => _touchMode = mode);
     unawaited(context.read<AppSettings>().setTouchMode(mode.name));
@@ -146,13 +161,17 @@ class _SessionViewState extends State<SessionView> {
                   fit: StackFit.expand,
                   children: [
                     if (showSurface)
-                      RemoteSurface(
-                        session: session,
-                        view: _view,
-                        isDesktop: isDesktop,
-                        touchMode: _touchMode,
-                        onMetrics: _onMetrics,
-                        onPointerActivity: _onPointerActivity,
+                      SessionFilesSlot.dropWrapper(
+                        context,
+                        session,
+                        RemoteSurface(
+                          session: session,
+                          view: _view,
+                          isDesktop: isDesktop,
+                          touchMode: _touchMode,
+                          onMetrics: _onMetrics,
+                          onPointerActivity: _onPointerActivity,
+                        ),
                       ),
                     if (!ended && session.authPrompt == null && !_hasPicture(session))
                       BusyOverlay(
@@ -161,9 +180,9 @@ class _SessionViewState extends State<SessionView> {
                         dim: 0.0,
                       ),
                     if (session.phase == SessionPhase.reconnecting && !ended)
-                      const BusyOverlay(
-                        title: 'Reconnecting…',
-                        subtitle: 'The picture will resume when the connection returns.',
+                      BusyOverlay(
+                        title: context.s.t('session.reconnecting'),
+                        subtitle: context.s.t('session.reconnecting.hint'),
                       ),
                     if (session.authPrompt != null && !ended) PasswordPrompt(session: session),
                     if (ended) EndedOverlay(session: session, onClose: _close),
@@ -172,6 +191,16 @@ class _SessionViewState extends State<SessionView> {
                         left: 12,
                         top: 64,
                         child: StatsOverlay(stats: session.stats),
+                      ),
+                    if (_filesOpen && isDesktop && !ended)
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: SessionFilesPanelHost(
+                          session: session,
+                          onClose: () => setState(() => _filesOpen = false),
+                        ),
                       ),
                     if (!ended) _toolbarLayer(context, session, desktop, shell, isDesktop),
                     if (_keyboardOpen && !isDesktop && !ended)
@@ -214,7 +243,8 @@ class _SessionViewState extends State<SessionView> {
     return Positioned(
       top: 8,
       left: 0,
-      right: 0,
+      // Centre the pill over the picture, not over the side panel.
+      right: _filesOpen && isDesktop ? 380.0 : 0.0,
       child: SafeArea(
         child: Align(
           alignment: Alignment.topCenter,
@@ -237,6 +267,8 @@ class _SessionViewState extends State<SessionView> {
                         onToggleStats: () => setState(() => _showStats = !_showStats),
                         onToggleFullScreen: () => _toggleFullScreen(desktop),
                         onToggleKeyboard: () => setState(() => _keyboardOpen = !_keyboardOpen),
+                        filesOpen: _filesOpen,
+                        onToggleFiles: _toggleFiles,
                         onTouchMode: _setTouchMode,
                         onActualSize: _actualSize,
                         onEnd: _end,

@@ -8,6 +8,7 @@ import '../../protocol/models.dart';
 import '../../session/prompts.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../../l10n/strings.dart';
 
 /// Builds the dialog for [prompt]. Dialogs only resolve their prompt; the
 /// [PromptHost] closes the route when the prompt completes (by the user, a
@@ -90,6 +91,7 @@ class AcceptRequestDialog extends StatefulWidget {
 class _AcceptRequestDialogState extends State<AcceptRequestDialog> {
   late bool _control = widget.prompt.proposed.control && widget.prompt.canControl;
   late bool _clipboard = widget.prompt.proposed.clipboard;
+  late bool _files = widget.prompt.proposed.files;
   bool _always = false;
   Timer? _timer;
   int _left = 30;
@@ -121,11 +123,12 @@ class _AcceptRequestDialogState extends State<AcceptRequestDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.s;
     final t = Theme.of(context);
     final p = widget.prompt;
     final who = p.claimedUser.isEmpty ? p.peer.name : p.claimedUser;
     return AlertDialog(
-      title: Text('$who wants to connect'),
+      title: Text(s.t('prompt.accept.title', {'who': who})),
       content: SizedBox(
         width: 420,
         child: SingleChildScrollView(
@@ -138,40 +141,47 @@ class _AcceptRequestDialogState extends State<AcceptRequestDialog> {
                 Padding(
                   padding: const EdgeInsets.only(top: Gap.s),
                   child: Text(
-                    'They call themselves "${p.claimedUser}". Only the ID above is verified.',
+                    s.t('prompt.accept.claimed', {'user': p.claimedUser}),
                     style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
                   ),
                 ),
               const SizedBox(height: Gap.l),
-              const Text('They will be able to:'),
-              const SwitchListTile(
+              Text(s.t('prompt.accept.able')),
+              SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 dense: true,
-                title: Text('See your screen'),
+                title: Text(s.t('prompt.accept.view')),
                 value: true,
                 onChanged: null,
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 dense: true,
-                title: const Text('Use your mouse and keyboard'),
-                subtitle: p.canControl ? null : const Text('Not available on this system'),
+                title: Text(s.t('prompt.accept.control')),
+                subtitle: p.canControl ? null : Text(s.t('prompt.accept.control.unavailable')),
                 value: _control,
                 onChanged: p.canControl ? (v) => setState(() => _control = v) : null,
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 dense: true,
-                title: const Text('Share the clipboard'),
+                title: Text(s.t('prompt.accept.clipboard')),
                 value: _clipboard,
                 onChanged: (v) => setState(() => _clipboard = v),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: Text(s.t('prompt.accept.files')),
+                value: _files,
+                onChanged: (v) => setState(() => _files = v),
               ),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 dense: true,
                 controlAffinity: ListTileControlAffinity.leading,
-                title: const Text('Always allow this device'),
-                subtitle: const Text('Skips this prompt next time. Revoke it in Settings.'),
+                title: Text(s.t('prompt.accept.always')),
+                subtitle: Text(s.t('prompt.accept.always.hint')),
                 value: _always,
                 onChanged: (v) => setState(() => _always = v ?? false),
               ),
@@ -184,7 +194,7 @@ class _AcceptRequestDialogState extends State<AcceptRequestDialog> {
                 ),
               ),
               const SizedBox(height: 4),
-              Text('Denied automatically in $_left s', style: t.textTheme.bodySmall),
+              Text(s.t('prompt.accept.countdown', {'n': _left}), style: t.textTheme.bodySmall),
             ],
           ),
         ),
@@ -192,15 +202,15 @@ class _AcceptRequestDialogState extends State<AcceptRequestDialog> {
       actions: [
         TextButton(
           onPressed: () => _finish(ApprovalResult.denied),
-          child: const Text('Deny'),
+          child: Text(s.t('prompt.deny')),
         ),
         FilledButton(
           onPressed: () => _finish(ApprovalResult(
             accepted: true,
             alwaysAllow: _always,
-            permissions: Permissions(view: true, control: _control, clipboard: _clipboard),
+            permissions: Permissions(view: true, control: _control, clipboard: _clipboard, files: _files),
           )),
-          child: const Text('Accept'),
+          child: Text(s.t('prompt.accept')),
         ),
       ],
     );
@@ -219,8 +229,9 @@ class ReverseOfferDialog extends StatelessWidget {
       prompt.resolve(accepted);
     }
 
+    final s = context.s;
     return AlertDialog(
-      title: Text('${prompt.peer.name} offers you control of their computer'),
+      title: Text(s.t('prompt.reverse.title', {'name': prompt.peer.name})),
       content: SizedBox(
         width: 420,
         child: Column(
@@ -229,13 +240,13 @@ class ReverseOfferDialog extends StatelessWidget {
           children: [
             PeerCard(peer: prompt.peer),
             const SizedBox(height: Gap.m),
-            const Text('You will see their screen and be able to use it. They can stop at any time.'),
+            Text(s.t('prompt.reverse.body')),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => done(false), child: const Text('Decline')),
-        FilledButton(onPressed: () => done(true), child: const Text('Accept')),
+        TextButton(onPressed: () => done(false), child: Text(s.t('prompt.decline'))),
+        FilledButton(onPressed: () => done(true), child: Text(s.t('prompt.accept'))),
       ],
     );
   }
@@ -249,13 +260,14 @@ class FirstContactDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.s;
     final t = Theme.of(context);
     void done(bool ok) {
       prompt.resolve(ok);
     }
 
     return AlertDialog(
-      title: const Text('Connect to a new device?'),
+      title: Text(s.t('prompt.first.title')),
       content: SizedBox(
         width: 420,
         child: Column(
@@ -264,18 +276,15 @@ class FirstContactDialog extends StatelessWidget {
           children: [
             PeerCard(peer: prompt.peer),
             const SizedBox(height: Gap.m),
-            Text('Found at ${prompt.address.hostPort}', style: t.textTheme.bodySmall),
+            Text(s.t('prompt.first.found', {'address': prompt.address.hostPort}), style: t.textTheme.bodySmall),
             const SizedBox(height: Gap.m),
-            const Text(
-              'Check that this ID matches the one the owner gave you. If it does '
-              'not, someone else is answering at this address.',
-            ),
+            Text(s.t('prompt.first.body')),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => done(false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => done(true), child: const Text('Trust and connect')),
+        TextButton(onPressed: () => done(false), child: Text(s.t('common.cancel'))),
+        FilledButton(onPressed: () => done(true), child: Text(s.t('prompt.first.trust'))),
       ],
     );
   }
@@ -297,7 +306,7 @@ class WarningDialog extends StatelessWidget {
       actions: [
         FilledButton(
           onPressed: () => prompt.resolve(null),
-          child: const Text('OK'),
+          child: Text(context.s.t('common.ok')),
         ),
       ],
     );
