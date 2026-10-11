@@ -16,6 +16,10 @@ on:
         description: Start a PulseAudio null sink first (turn off to reproduce the crash without it)
         type: boolean
         default: true
+      repeat:
+        description: Run the whole suite this many times in one job (flakiness soak)
+        type: number
+        default: 1
   workflow_call:
 
 concurrency:
@@ -79,6 +83,7 @@ jobs:
       - name: Run end-to-end tests
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
+          REPEAT: ${{ inputs.repeat || 1 }}
         run: |
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/e2e" "$RUNNER_TEMP/cores"
@@ -87,12 +92,14 @@ jobs:
           ulimit -c unlimited
           # One flutter invocation per file: a crashed app must not stop the next file from running.
           status=0
-          for f in integration_test/*_test.dart; do
-            echo "::group::$f"
-            xvfb-run -a -s "-screen 0 1280x800x24" \
-              flutter test "$f" -d linux --reporter expanded 2>&1 | tee -a "$RUNNER_TEMP/e2e/test.log" || status=1
-            pkill -f 'bundle/thelxis' || true
-            echo "::endgroup::"
+          for round in $(seq 1 "$REPEAT"); do
+            for f in integration_test/*_test.dart; do
+              echo "::group::$f (round $round)"
+              xvfb-run -a -s "-screen 0 1280x800x24" \
+                flutter test "$f" -d linux --reporter expanded 2>&1 | tee -a "$RUNNER_TEMP/e2e/test.log" || status=1
+              pkill -f 'bundle/thelxis' || true
+              echo "::endgroup::"
+            done
           done
           exit $status
 
