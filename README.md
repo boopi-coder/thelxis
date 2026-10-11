@@ -1,265 +1,185 @@
-<p align="center">
-  <img src="app/assets/icon/app_icon.png" alt="Thelxis" width="128" height="128">
-</p>
+<div align="center">
 
-<h1 align="center">Thelxis</h1>
+<img src="app/assets/icon/app_icon.png" width="128" alt="Thelxis">
 
-<p align="center">
-  <b>Удалённый рабочий стол без серверов.</b> Прямое зашифрованное соединение компьютер - компьютер.<br>
-  <b>Remote desktop with no servers.</b> Direct, end-to-end encrypted PC-to-PC connection.
-</p>
+# Thelxis
 
-<p align="center">
-  <a href="https://github.com/sibawal/thelxis/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/sibawal/thelxis/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/sibawal/thelxis/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/sibawal/thelxis?include_prereleases"></a>
-</p>
+**Remote desktop with no servers. Direct, end-to-end encrypted, PC to PC.**
+No accounts, no relays, no cloud. Encryption keys live only on your devices.
 
-[Русский](#русский) | [English](#english)
+[![macOS](https://img.shields.io/badge/macOS-12%2B-000000?logo=apple&logoColor=white)](#download)
+[![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4?logo=windows&logoColor=white)](#download)
+[![Linux](https://img.shields.io/badge/Linux-deb%20%7C%20tar.gz-fcc624?logo=linux&logoColor=black)](#download)
+[![Android](https://img.shields.io/badge/Android-7%2B-3ddc84?logo=android&logoColor=white)](#download)
+[![License](https://img.shields.io/badge/license-MIT-22c55e)](LICENSE)
+[![Made by](https://img.shields.io/badge/made%20by-boopi.ru-7c3aed)](https://boopi.ru)
 
----
+**English** | [Русский](README.ru.md)
 
-## Русский
+<img src="docs/screenshots/home-en.png" width="820" alt="Thelxis home screen">
 
-### Что это
-
-**Thelxis** — кроссплатформенный удалённый рабочий стол для **Windows, macOS, Linux и Android**. Одно приложение
-работает и как *хост* (им управляют), и как *зритель* (вы управляете). Между двумя устройствами нет ничего:
-**ни сервера, ни аккаунта, ни чьего-то реле**. Ключи шифрования существуют только на ваших устройствах.
-
-### Почему «Thelxis»
-
-**Θέλξις** (thelxis) по-гречески — «очарование, завораживание». Так называли силу жезла Гермеса, которым он
-усыплял и завораживал взгляд людей. Гермес — ещё и бог-вестник, посланник. Продукт, который «зачаровывает»
-устройство на расстоянии, получил имя от этой силы, а логотип — гипнотическая спираль.
-
-### Возможности
-
-- **Без посредников**: прямое P2P-соединение (WebRTC, DTLS-SRTP), никаких серверов и учётных записей.
-- **Не зависает**: движок libwebrtc (как в Chrome/Meet) — контроль перегрузки, NACK/PLI/FEC, адаптивный битрейт,
-  аппаратные кодеки, перезапуск ICE при смене сети.
-- **Безопасность по построению**: идентичность — ключ Ed25519, Thelxis ID — его отпечаток; рукопожатие и каждый SDP
-  подписаны, поэтому подмена канала (MITM) невозможна. Пароль по сети не передаётся. Хост всегда видит, кто
-  подключён, и может мгновенно отключить.
-- **Подключение за любым роутером**: автообнаружение в LAN -> IPv6 -> проброс портов UPnP/NAT-PMP/PCP -> обратное
-  соединение; в каждом приложении встроены STUN/TURN (см. таблицу ниже).
-- **Управление**: мышь, клавиатура, несколько мониторов, буфер обмена (текст), пресеты качества, статистика
-  (RTT, fps, битрейт, потери, тип пути).
-- **Доверенные устройства** для доступа без присутствия (как `authorized_keys` в SSH), права по устройствам,
-  адресная книга с заметками и тегами, ссылки-приглашения и QR.
-- **Платформы**: Windows, macOS (Apple Silicon и Intel), Linux (X11), Android (хост и зритель).
-- **Обновления**: приложение проверяет GitHub Releases (единственный запрос не к собеседнику) и ставит только
-  релизы с подписью Ed25519, ключ которой зашит в приложение; отключается в настройках.
-
-### Как устанавливается соединение
-
-| # | Ситуация | Как подключаемся |
-|---|---|---|
-| 1 | Одна LAN / VPN (Tailscale, ZeroTier, WireGuard) | UDP-обнаружение, прямые адреса |
-| 2 | У обоих есть IPv6 | прямой IPv6 |
-| 3 | Хост доступен: публичный IP, авто-проброс UPnP/NAT-PMP/PCP или ручной проброс 47100/tcp+udp, 47101/tcp | зритель подключается к хосту; встроенный STUN/TURN хоста пропускает через любой NAT |
-| 4 | Доступен только зритель | **обратное соединение**: управляемая сторона сама подключается к зрителю |
-| 5 | Оба за CGNAT и без IPv6 | без третьей стороны невозможно: опциональный публичный STUN (по умолчанию выключен) или VPN-оверлей |
-
-Порты (на самом устройстве):
-
-| Порт | Назначение |
-|---|---|
-| 47100/tcp | сигнализация (WebSocket) |
-| 47100/udp | встроенный STUN/TURN |
-| 47101/tcp | TURN поверх TCP (сети, блокирующие UDP) |
-| 47102/udp | обнаружение в локальной сети |
-
-### Архитектура
-
-```
-┌──────────────────────── Thelxis App (Flutter, one codebase) ─────────────────────────┐
-│ UI (Material 3) — Home · Devices · Sessions · Settings                               │
-│ Core: identity (Ed25519, Thelxis ID) · settings · address book · trusted devices     │
-│ Net:  Listener (WS :47100) · Dialer (happy eyeballs) · LAN discovery (UDP :47102)    │
-│       Connectivity: UPnP-IGD / NAT-PMP / PCP mapper · embedded STUN/TURN (:47100/udp, │
-│       :47101/tcp) · reachability report (LAN, IPv6, external IP, CGNAT detection)    │
-│ Session: HostSession / ViewerSession (flutter_webrtc / libwebrtc, DTLS-SRTP)          │
-│ Platform: HostPlatform → InputInjector + displays + permissions + capture services   │
-│   windows: FFI SendInput · macos: CGEvent · linux: FFI XTest · android: Accessibility │
-└──────────────────────────────────────────────────────────────────────────────────────┘
-                 ▲                      WebRTC P2P, E2E                      ▲
-                 └──────────────────── (no servers) ─────────────────────────┘
-```
-
-Подробнее: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), протокол: [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
-
-### Скачать
-
-Готовые сборки для всех платформ — на странице **[Releases](https://github.com/sibawal/thelxis/releases/latest)**:
-
-| Платформа | Файлы |
-|---|---|
-| Windows | установщик `Thelxis-<версия>-windows-x64-setup.exe`, архив `Thelxis-<версия>-windows-x64.zip` |
-| macOS | `Thelxis-<версия>-macos-universal.dmg` |
-| Linux | `thelxis_<версия>_amd64.deb`, `Thelxis-<версия>-linux-x64.tar.gz` |
-| Android | `Thelxis-<версия>-android-<abi>.apk` или `...-universal.apk` |
-
-Сборки не подписаны сертификатом разработчика — инструкции по первому запуску (SmartScreen, Gatekeeper, права
-macOS, служба специальных возможностей Android) приведены в описании каждого релиза.
-
-### Сборка из исходников
-
-Нужен Flutter 3.47 (Dart 3.13). Для нативных сборок — тулчейн целевой платформы: Visual Studio (C++ desktop) на
-Windows, Xcode на macOS, `clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libx11-dev libxi-dev` на Linux
-(Ubuntu 22.04+), JDK 17 и Android SDK для Android.
-
-```bash
-cd app
-flutter pub get
-flutter analyze && flutter test
-flutter run -d macos          # или windows / linux / <android-устройство>
-flutter build apk --release   # или: macos | windows | linux
-```
-
-Иконки: `packaging/icons/generate.sh` (Python 3 + Pillow + numpy) заново рисует логотип и обновляет иконки платформ.
-Релиз выпускается тегом: см. [`packaging/README.md`](packaging/README.md).
-
-### Структура репозитория
-
-```
-app/          Flutter-приложение (Windows, macOS, Linux, Android)
-docs/         архитектура, протокол, решения
-packaging/    иконки, установщик Windows (Inno Setup), сборка .deb, шаблон описания релиза
-.github/      GitHub Actions: CI и выпуск релизов
-```
-
-### Дорожная карта
-
-- **v0.1** — P2P без серверов, подписанное рукопожатие, встроенные STUN/TURN, UPnP/NAT-PMP, LAN-обнаружение,
-  ссылки-приглашения, вход по паролю / запросу / доверенному ключу, управление, несколько мониторов, буфер обмена,
-  пресеты качества, статистика, адресная книга, релизы под все платформы.
-- **v0.2** — служба Windows / LaunchDaemon macOS для доступа к экрану входа, передача файлов, чат, ввод в Wayland,
-  звук, опциональный децентрализованный поиск адреса (DHT, подписанные записи) для динамических IP, автообновление.
-- **v0.3** — подписанные файлы политик для парков устройств, локальная запись сессий, 2FA на хосте, зритель для iOS.
+</div>
 
 ---
 
-## English
+## What it is
 
-### What it is
+Thelxis is a cross-platform remote desktop for **Windows, macOS, Linux and Android**. One app is both the *host*
+(the machine being controlled) and the *viewer* (the one controlling). Between the two devices there is nothing:
+**no server, no account, no relay run by anyone.**
 
-**Thelxis** is a cross-platform remote desktop for **Windows, macOS, Linux and Android**. One app is both the
-*host* (being controlled) and the *viewer* (controlling). Between two devices there is nothing: **no server, no
-account, no relay run by anyone**. Encryption keys exist only on your devices.
+- **No intermediaries.** The connection goes PC to PC. Nothing in between can decrypt, record or see who talks to
+  whom, apart from the network path itself.
+- **End-to-end, keys only on devices.** Identity is an Ed25519 key that never leaves the machine. Media is
+  protected by DTLS-SRTP bound to both identities.
+- **Never freezes.** Screen transport is libwebrtc, the engine behind Chrome and Meet: congestion control,
+  NACK/PLI/FEC, adaptive bitrate, hardware codecs, ICE restart on network change.
+- **Works on a LAN or VPN with zero setup,** and over the internet as soon as one side is reachable. When nobody
+  is, two short codes passed over any messenger are enough (see [How connecting works](#how-connecting-works)).
 
-### Why "Thelxis"
+The name is Greek: Θέλξις (thelxis), "enchantment", the power of Hermes' wand over the eyes of men. The logo is
+a spiral.
 
-**Θέλξις** (thelxis) is Greek for "enchantment, spellbinding" - the power of Hermes' wand over the eyes of men.
-Hermes was also the messenger god. A product that "charms" a device from afar took its name from that power, and
-its logo is a hypnotic spiral.
+## Features
 
-### Features
-
-- **No intermediaries**: direct P2P connection (WebRTC, DTLS-SRTP); no servers, no accounts.
-- **Never freezes**: the libwebrtc engine (as in Chrome/Meet) - congestion control, NACK/PLI/FEC, adaptive bitrate,
-  hardware codecs, ICE restart on network change.
-- **Security by construction**: identity is an Ed25519 key and the Thelxis ID is its fingerprint; the handshake and
-  every SDP are signed, so the encrypted channel is bound to both identities (no MITM). Passwords never travel.
-  The host always shows who is connected and can cut them off instantly.
-- **Connects behind any router**: LAN auto-discovery -> IPv6 -> UPnP/NAT-PMP/PCP port mapping -> reverse
-  connection; every app embeds its own STUN/TURN (see the table below).
-- **Control**: mouse, keyboard, multiple monitors, text clipboard, quality presets, live stats (RTT, fps,
-  bitrate, loss, path type).
-- **Trusted devices** for unattended access (like SSH `authorized_keys`), per-device permissions, an address book
+- **Screen and control**: mouse, keyboard, special keys, view-only mode, fit / 1:1 / fullscreen, live stats (RTT,
+  fps, bitrate, loss, path type).
+- **File transfer both ways**: drag and drop onto the session, a remote file browser (download and upload),
+  a transfer queue with progress, speed and ETA, SHA-256 verification.
+- **Clipboard** sync both ways (text).
+- **Multiple monitors**: pick any display of the host and switch on the fly.
+- **Quality presets** from "smooth" to "sharp".
+- **Trusted devices** for unattended access, like SSH `authorized_keys`, with per-device permissions; address book
   with notes and tags, invite links and QR codes.
-- **Platforms**: Windows, macOS (Apple Silicon and Intel), Linux (X11), Android (host and viewer).
-- **Updates**: the app checks GitHub Releases (its only request that is not to your peer) and installs only releases
-  whose manifest carries a valid Ed25519 signature for the key built into the app; can be turned off in settings.
+- **Mandatory on-screen badge** on the controlled PC: a small always-on-top window with who is connected and for
+  how long. It cannot be hidden or disabled, and *Stop* ends the session at once.
+- **Tray mode** on Windows, macOS and Linux: closing the window hides it to the tray, the listener keeps running;
+  optional start at login, minimized.
+- **Signed over-the-air updates** from GitHub Releases, verified against an Ed25519 key built into the app and
+  installed only when no session is active. Can be turned off.
+- **Russian and English** interface, **light and dark** theme.
 
-### How connections are made
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/home-en-dark.png" width="400" alt="Home, dark theme"><br><sub>Home, dark theme</sub></td>
+    <td align="center"><img src="docs/screenshots/settings-en.png" width="400" alt="Settings"><br><sub>Settings</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/session-files.png" width="400" alt="Session with the remote file browser"><br><sub>Session with the remote file browser</sub></td>
+    <td align="center"><img src="docs/screenshots/phone-en-dark.png" width="180" alt="Android, dark theme"><br><sub>Android, dark theme</sub></td>
+  </tr>
+</table>
+
+## How connecting works
+
+There are no intermediary servers. The app tries these in order, and the first that works wins:
 
 | # | Situation | How it connects |
 |---|---|---|
-| 1 | Same LAN / VPN (Tailscale, ZeroTier, WireGuard) | UDP discovery, direct host candidates |
-| 2 | Both have IPv6 | direct IPv6 |
-| 3 | Host reachable: public IP, UPnP/NAT-PMP/PCP auto-mapping, or manual forward of 47100/tcp+udp and 47101/tcp | viewer dials the host; the host's embedded STUN/TURN gets the viewer through any NAT |
-| 4 | Only the viewer is reachable | **reverse connection**: the controlled side dials out to the viewer |
-| 5 | Both behind carrier-grade NAT, no IPv6 | not possible without a third party: optional public STUN (off by default) or a VPN overlay |
+| 1 | Same LAN or VPN (Tailscale, ZeroTier, WireGuard) | UDP discovery, direct addresses |
+| 2 | Both sides have IPv6 | direct IPv6 |
+| 3 | Host is reachable: public IP, automatic UPnP / NAT-PMP / PCP mapping, or a manual forward of 47100/tcp+udp and 47101/tcp | the viewer dials the host; the host's embedded STUN/TURN gets it through any NAT |
+| 4 | Several office PCs behind one IP, one of them reachable | **office gateway**: the reachable PC pipes signaling and relays ciphertext to the others; encryption stays viewer to target |
+| 5 | Only the viewer is reachable | **reverse connection**: the controlled side dials out to the viewer |
+| 6 | Nobody is reachable (carrier-grade NAT on both sides) | **connect by code**: two short texts exchanged over any messenger, plus public STUN hole punching |
+| 7 | Symmetric NATs on both sides, no IPv6 | impossible without a relay: use a VPN overlay |
 
-Ports (on the device itself):
+Public STUN (Google, Cloudflare) is on by default; it reveals only an IP and port, never session data, and can be
+turned off in settings.
 
-| Port | Purpose |
+Ports on the device itself: `47100/tcp` signaling (WebSocket), `47100/udp` embedded STUN/TURN, `47101/tcp` TURN
+over TCP (for networks that block UDP), `47102/udp` LAN discovery.
+
+## Download
+
+Grab the build for your system from **[Releases](https://github.com/sibawal/thelxis/releases/latest)**:
+
+| System | File |
 |---|---|
-| 47100/tcp | signaling (WebSocket) |
-| 47100/udp | embedded STUN/TURN |
-| 47101/tcp | TURN over TCP (networks that block UDP) |
-| 47102/udp | LAN discovery |
+| Windows 10 / 11 (x64) | `Thelxis-<ver>-windows-x64-setup.exe` (installer), `Thelxis-<ver>-windows-x64.zip` (portable) |
+| macOS 12+ (Apple Silicon and Intel) | `Thelxis-<ver>-macos-universal.dmg` |
+| Debian / Ubuntu and derivatives | `thelxis_<ver>_amd64.deb` |
+| Linux x64 (any distribution) | `Thelxis-<ver>-linux-x64.tar.gz` |
+| Android 7.0+ | `Thelxis-<ver>-android-<abi>.apk` (`arm64-v8a` for most phones; `universal` if unsure) |
 
-### Architecture
+SHA-256 checksums of every file are in `SHA256SUMS.txt` on the release page.
 
-```
-┌──────────────────────── Thelxis App (Flutter, one codebase) ─────────────────────────┐
-│ UI (Material 3) — Home · Devices · Sessions · Settings                               │
-│ Core: identity (Ed25519, Thelxis ID) · settings · address book · trusted devices     │
-│ Net:  Listener (WS :47100) · Dialer (happy eyeballs) · LAN discovery (UDP :47102)    │
-│       Connectivity: UPnP-IGD / NAT-PMP / PCP mapper · embedded STUN/TURN (:47100/udp, │
-│       :47101/tcp) · reachability report (LAN, IPv6, external IP, CGNAT detection)    │
-│ Session: HostSession / ViewerSession (flutter_webrtc / libwebrtc, DTLS-SRTP)          │
-│ Platform: HostPlatform → InputInjector + displays + permissions + capture services   │
-│   windows: FFI SendInput · macos: CGEvent · linux: FFI XTest · android: Accessibility │
-└──────────────────────────────────────────────────────────────────────────────────────┘
-                 ▲                      WebRTC P2P, E2E                      ▲
-                 └──────────────────── (no servers) ─────────────────────────┘
-```
+### First launch
 
-More: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), protocol: [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
+The builds are not signed with a paid developer certificate, so the system warns you once.
 
-### Download
+**Windows.** SmartScreen shows *Windows protected your PC*: click *More info*, then *Run anyway*. The installer
+adds Windows Firewall rules for `thelxis.exe` (inbound TCP 47100-47101, UDP 47100 and 47102) and removes them on
+uninstall. With the portable `.zip`, allow the app through the firewall when Windows asks.
 
-Ready-made builds for every platform are on the **[Releases](https://github.com/sibawal/thelxis/releases/latest)** page:
+**macOS.** Drag Thelxis to Applications.
+- macOS 12-14: right-click the app, *Open*, *Open*.
+- macOS 15 and newer: try to open it, then go to *System Settings → Privacy & Security* and click *Open Anyway*.
+- Or in Terminal: `xattr -dr com.apple.quarantine /Applications/Thelxis.app`
 
-| Platform | Files |
-|---|---|
-| Windows | installer `Thelxis-<version>-windows-x64-setup.exe`, archive `Thelxis-<version>-windows-x64.zip` |
-| macOS | `Thelxis-<version>-macos-universal.dmg` |
-| Linux | `thelxis_<version>_amd64.deb`, `Thelxis-<version>-linux-x64.tar.gz` |
-| Android | `Thelxis-<version>-android-<abi>.apk` or `...-universal.apk` |
+Then grant two permissions under *System Settings → Privacy & Security*: *Screen Recording* (to share your screen)
+and *Accessibility* (to let a remote person use your mouse and keyboard), and restart the app. The app carries a
+stable signature, so the permissions survive updates.
 
-Builds are not signed with a developer certificate - first-launch instructions (SmartScreen, Gatekeeper, macOS
-permissions, the Android accessibility service) are in each release's notes.
+**Linux.** `.deb`: `sudo apt install ./thelxis_<ver>_amd64.deb`, then start Thelxis from the app menu or run
+`thelxis`. `.tar.gz`: extract and run `./thelxis`; it needs GTK 3 and the X11 libraries (`libxtst6`, `libxrandr2`).
+A sound server (PulseAudio or PipeWire) is required; any regular desktop has one, and the `.deb` pulls it in.
+Remote control works in an **X11** session; on Wayland the screen can be shared but input is not supported yet.
+For the tray icon, GNOME needs the AppIndicator extension (enabled by default on Ubuntu).
 
-### Building from source
+**Android.** Open the APK and allow installs from unknown sources for your browser or file manager. To let someone
+control this phone, turn on the accessibility service: *Settings → Accessibility → Installed apps → Thelxis*. If
+the switch is greyed out, open *Settings → Apps → Thelxis → ⋮ → Allow restricted settings* first. Screen sharing
+asks for the system capture permission each time it starts.
 
-You need Flutter 3.47 (Dart 3.13) plus the native toolchain of your target: Visual Studio (C++ desktop workload)
-on Windows, Xcode on macOS, `clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libx11-dev libxi-dev` on
-Linux (Ubuntu 22.04+), JDK 17 and the Android SDK for Android.
+## Security
+
+- **Identity.** Each device has an Ed25519 key; the Thelxis ID is its fingerprint. The key never leaves the device.
+- **Signed handshake.** The handshake and every SDP are signed, so the encrypted channel is bound to both
+  identities and a man-in-the-middle cannot substitute it.
+- **Transport.** DTLS-SRTP from libwebrtc. The embedded TURN only relays to its own machine (never an open relay)
+  and carries already-encrypted packets.
+- **Passwords never travel.** Authentication uses a session-bound proof; trusted devices use their signed key.
+- **The host is always in charge.** The on-screen badge is mandatory and *Stop* ends the session instantly.
+- **Signed updates.** Releases are installed only if the manifest carries a valid Ed25519 signature for the key
+  built into the app.
+
+Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROTOCOL.md](docs/PROTOCOL.md).
+
+## Building from source
+
+You need Flutter 3.47.7 plus the native toolchain of your target: Visual Studio (C++ desktop workload) on Windows,
+Xcode on macOS, `clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libx11-dev libxi-dev` on Linux
+(Ubuntu 22.04+), JDK 17 and the Android SDK for Android.
 
 ```bash
-cd app
+git clone https://github.com/sibawal/thelxis.git
+cd thelxis/app
 flutter pub get
-flutter analyze && flutter test
 flutter run -d macos          # or windows / linux / <android device>
 flutter build apk --release   # or: macos | windows | linux
 ```
 
-Icons: `packaging/icons/generate.sh` (Python 3 + Pillow + numpy) redraws the logo and refreshes the platform
-icons. Releases are cut with a tag: see [`packaging/README.md`](packaging/README.md).
+Tests: `flutter analyze && flutter test`. Platform icons are redrawn by `packaging/icons/generate.sh`. Releases are
+cut with a `v*` tag; see [packaging/README.md](packaging/README.md).
 
-### Repository layout
+## Repository layout
 
 ```
 app/          Flutter app (Windows, macOS, Linux, Android)
-docs/         architecture, protocol, decisions
+docs/         architecture, protocol, decisions, screenshots
 packaging/    icons, Windows installer (Inno Setup), .deb builder, release notes template
 .github/      GitHub Actions: CI and releases
 ```
 
-### Roadmap
+## License
 
-- **v0.1** - serverless P2P, signed handshake, embedded STUN/TURN, UPnP/NAT-PMP, LAN discovery, invite links,
-  password / request / trusted-key auth, control, multi-monitor, clipboard text, quality presets, stats, address
-  book, releases for all platforms.
-- **v0.2** - Windows service / macOS LaunchDaemon for login-screen access, file transfer, chat UI, Wayland input,
-  audio, optional decentralized address lookup (DHT, signed records) for dynamic IPs, auto-update.
-- **v0.3** - signed fleet policy files, local session recording, 2FA on the host, iOS viewer.
+MIT, see [LICENSE](LICENSE). Use it, change it, ship it.
 
----
+<div align="center">
 
-## Лицензия / License
+Made by [boopi.ru](https://boopi.ru) · [Русская версия README](README.ru.md)
 
-MIT — см. [LICENSE](LICENSE). / MIT — see [LICENSE](LICENSE).
+</div>
