@@ -62,9 +62,11 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
-      # The runner has no sound card; libwebrtc's audio device module wants a PulseAudio server to talk to.
+      # The runner has no sound card. Without a PulseAudio-compatible server libwebrtc aborts inside
+      # WebRtcVoiceEngine::Init() while the first PeerConnection is created (reproduce with the
+      # `pulseaudio: false` dispatch input), so give it a null sink to talk to.
       - name: Start a PulseAudio server with a null sink
-        if: inputs.pulseaudio != false
+        if: github.event_name != 'workflow_dispatch' || inputs.pulseaudio
         run: |
           sudo apt-get install -y --no-install-recommends pulseaudio
           export XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg"
