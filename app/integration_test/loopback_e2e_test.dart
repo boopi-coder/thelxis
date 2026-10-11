@@ -246,6 +246,53 @@ void main() {
     );
   });
 
+  e2e('d2) big files in both directions at once and a nested folder arrive intact', (rig) async {
+    final tmp = await Directory.systemTemp.createTemp('thelxis_e2e_big_');
+    addTearDown(() async {
+      try {
+        await tmp.delete(recursive: true);
+      } on FileSystemException {
+        // Temp files only.
+      }
+    });
+    const size = 24 << 20;
+    final upBytes = _noise(size, 1);
+    final downBytes = _noise(size, 2);
+    await File('${tmp.path}/up.bin').writeAsBytes(upBytes);
+    await File('${tmp.path}/down.bin').writeAsBytes(downBytes);
+
+    // A folder whose names are not plain ASCII, two levels deep.
+    final tree = await Directory('${tmp.path}/Проект').create();
+    await Directory('${tree.path}/вложенная/глубже').create(recursive: true);
+    await File('${tree.path}/readme.txt').writeAsString('top');
+    await File('${tree.path}/вложенная/файл с пробелами.txt').writeAsString('middle');
+    await File('${tree.path}/вложенная/глубже/データ.bin').writeAsBytes(_noise(70000, 3));
+    final deepBytes = await File('${tree.path}/вложенная/глубже/データ.bin').readAsBytes();
+
+    final viewer = await rig.dial();
+    final host = await rig.authorize(viewer);
+    await waitUntil(() => viewer.files != null && host.files != null, what: 'file endpoints');
+    final vf = viewer.files!;
+    final hf = host.files!;
+
+    final started = Stopwatch()..start();
+    await vf.sendFiles(['${tmp.path}/up.bin', tree.path]);
+    await hf.sendFiles(['${tmp.path}/down.bin']);
+    await Future.wait([vf.whenIdle(), hf.whenIdle()]).timeout(const Duration(seconds: 50));
+    print('2 x ${size >> 20} MiB and a folder in ${started.elapsedMilliseconds} ms');
+
+    for (final t in [...vf.transfers, ...hf.transfers]) {
+      expect(t.status, TransferStatus.completed, reason: '${t.name}: ${t.error}');
+    }
+    expect(listEquals(await File('${rig.host.incoming.path}/up.bin').readAsBytes(), upBytes), isTrue);
+    expect(listEquals(await File('${rig.viewer.incoming.path}/down.bin').readAsBytes(), downBytes), isTrue);
+    final landed = '${rig.host.incoming.path}/Проект';
+    expect(await File('$landed/readme.txt').readAsString(), 'top');
+    expect(await File('$landed/вложенная/файл с пробелами.txt').readAsString(), 'middle');
+    expect(listEquals(await File('$landed/вложенная/глубже/データ.bin').readAsBytes(), deepBytes), isTrue);
+    expect(viewer.phase, SessionPhase.active, reason: 'the channel survived the load');
+  });
+
   e2e('e) clipboard text and chat travel both ways', (rig) async {
     final viewer = await rig.dial();
     final host = await rig.authorize(viewer);
@@ -733,6 +780,7 @@ void e2e(
 }) {
   testWidgets(name, (tester) async {
     final audit = TimerAudit();
+    final fdsBefore = _openFileDescriptors();
     await runZoned(() async {
       final rig = await E2ERig.start(
         hostPermissions: hostPermissions,
@@ -749,7 +797,32 @@ void e2e(
       }
     }, zoneSpecification: audit.specification);
     await Future<void>.delayed(const Duration(milliseconds: 300));
+    // Sockets and files left open would show up as extra descriptors.
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    print('open file descriptors: $fdsBefore before, ${_openFileDescriptors()} after');
     final leaks = audit.leaks();
     expect(leaks, isEmpty, reason: 'timers still running after the scenario ended (of ${audit.created} created)');
   }, timeout: const Timeout(Duration(seconds: 60)));
+}
+
+/// Incompressible, reproducible bytes without a per-byte function call.
+Uint8List _noise(int length, int seed) {
+  final words = Uint32List((length + 3) >> 2);
+  var x = 0x9E3779B9 ^ seed;
+  for (var i = 0; i < words.length; i++) {
+    x ^= (x << 13) & 0xFFFFFFFF;
+    x ^= x >> 17;
+    x ^= (x << 5) & 0xFFFFFFFF;
+    words[i] = x;
+  }
+  return words.buffer.asUint8List(0, length);
+}
+
+/// Number of descriptors this process holds (Linux only; -1 elsewhere).
+int _openFileDescriptors() {
+  try {
+    return Directory('/proc/self/fd').listSync().length;
+  } on FileSystemException {
+    return -1;
+  }
 }
