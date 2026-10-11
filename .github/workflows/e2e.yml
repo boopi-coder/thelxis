@@ -66,6 +66,21 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x800x24" \
             flutter test integration_test -d linux --reporter expanded -v 2>&1 | tee "$RUNNER_TEMP/e2e/test.log"
 
+      # When the test process dies without a word (native crash), launching the bundle by hand shows
+      # its stdout/stderr, which the flutter tool does not forward.
+      - name: Run the bundle directly for crash output
+        if: failure()
+        continue-on-error: true
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          cd build/linux/x64/debug/bundle
+          ls -la . lib
+          ldd lib/libflutter_webrtc_plugin.so | grep -i "not found" || true
+          xvfb-run -a -s "-screen 0 1280x800x24" timeout 60 ./thelxis > "$RUNNER_TEMP/e2e/bundle.log" 2>&1 || echo "exit code $?"
+          tail -n 120 "$RUNNER_TEMP/e2e/bundle.log"
+          dmesg 2>/dev/null | tail -n 20 || true
+
       - name: Upload logs
         if: failure()
         uses: actions/upload-artifact@v7
