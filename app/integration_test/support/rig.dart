@@ -152,7 +152,7 @@ class E2ENode {
   final List<Map<String, dynamic>> sentControl = [];
   final Set<Object> _tapped = {};
 
-  static Future<E2ENode> create(String name, {required bool listening}) async {
+  static Future<E2ENode> create(String name, {required bool listening, int displays = 1}) async {
     // Each node needs its own preference store: the plugin's singleton would
     // otherwise be shared, and with it the trusted devices and address book.
     SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -167,9 +167,9 @@ class E2ENode {
       config: const ConnectivityConfig(turnUdpPort: 0, turnTcpPort: 0),
     );
     final injector = RecordingInjector();
-    final platform = FakeHostPlatform(injector: injector);
+    final platform = FakeHostPlatform(injector: injector, displayCount: displays);
     final badge = FakeBadge();
-    final clipboard = FakeClipboard();
+    final clipboard = FakeClipboard(name);
     final incoming = await Directory.systemTemp.createTemp('thelxis_e2e_${name.toLowerCase()}_in_');
     final trusted = TrustedDevices(prefs);
     final book = AddressBook(prefs);
@@ -294,13 +294,35 @@ class E2ERig {
   final E2ENode host;
   final E2ENode viewer;
 
-  static Future<E2ERig> start({Permissions? hostPermissions, bool viewerListens = false}) async {
-    final host = await E2ENode.create('Host', listening: true);
+  static Future<E2ERig> start({
+    Permissions? hostPermissions,
+    bool viewerListens = false,
+    int hostDisplays = 1,
+  }) async {
+    final host = await E2ENode.create('Host', listening: true, displays: hostDisplays);
     final viewer = await E2ENode.create('Viewer', listening: viewerListens);
     if (hostPermissions != null) {
       await host.settings.setDefaultPermissions(hostPermissions);
     }
     return E2ERig._(host, viewer);
+  }
+
+  final List<E2ENode> _extraViewers = [];
+
+  /// Another controlling device that connects to the same host.
+  Future<E2ENode> addViewer(String name) async {
+    final node = await E2ENode.create(name, listening: false);
+    _extraViewers.add(node);
+    return node;
+  }
+
+  /// Dials the host from [node] and authorizes with the one-time password.
+  Future<ViewerSession> connectExtra(E2ENode node) async {
+    final session = await node.manager.connect(target);
+    await waitUntil(() => session.authPrompt != null, what: '${node.name} is asked for a password');
+    await session.submitPassword(host.credentials.oneTimePassword);
+    await waitUntil(() => session.phase == SessionPhase.active, what: '${node.name} is active');
+    return session;
   }
 
   ConnectTarget get target => ConnectTarget(
@@ -334,6 +356,9 @@ class E2ERig {
   }
 
   Future<void> dispose() async {
+    for (final extra in _extraViewers) {
+      await extra.shutDown();
+    }
     await viewer.shutDown();
     await host.shutDown();
   }

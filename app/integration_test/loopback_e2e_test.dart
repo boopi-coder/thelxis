@@ -251,7 +251,7 @@ void main() {
     final host = await rig.authorize(viewer);
     const wait = Duration(seconds: 8);
 
-    for (var round = 1; round <= 3; round++) {
+    for (var round = 1; round <= 6; round++) {
       final fromViewer = 'round $round from the viewer: привет';
       rig.viewer.clipboard.text = fromViewer;
       await waitUntil(
@@ -282,8 +282,12 @@ void main() {
     final viewerSent = summary(rig.viewer.sent('clipboard'));
     final hostSent = summary(rig.host.sent('clipboard'));
     print('clipboard messages sent by the viewer: $viewerSent; by the host: $hostSent');
-    expect(rig.viewer.sent('clipboard').length, 4, reason: 'viewer sent its own four changes only: $viewerSent');
-    expect(rig.host.sent('clipboard').length, 3, reason: 'host sent its own three changes only: $hostSent');
+    final timeline = ([...rig.viewer.clipboard.timeline, ...rig.host.clipboard.timeline]
+          ..sort((a, b) => int.parse(a.split(' ').first).compareTo(int.parse(b.split(' ').first))))
+        .join('\n');
+    expect(rig.viewer.sent('clipboard').length, 7,
+        reason: 'viewer sent its own seven changes only: $viewerSent\n$timeline');
+    expect(rig.host.sent('clipboard').length, 6, reason: 'host sent its own six changes only: $hostSent\n$timeline');
 
     viewer.sendChat('hello from the viewer');
     await waitUntil(() => host.chatLog.contains('hello from the viewer'), what: 'chat reaches the host');
@@ -457,7 +461,209 @@ void main() {
     expect(rig.host.sent('auth_result').last['trusted'], isTrue);
   });
 
-  e2e('j) reverse connection: the controlled device dials out and offers control', (rig) async {
+  e2e('j) dialing the LAN address of the host works like loopback', (rig) async {
+    final lan = rig.host.connectivity.report.value.lanIPv4;
+    print('host LAN addresses: $lan');
+    expect(lan, isNotEmpty, reason: 'the runner must have a LAN interface for this scenario');
+    final viewer = await rig.dial(
+      to: ConnectTarget(
+        id: rig.host.identity.id,
+        addresses: [NetAddress(lan.first, rig.host.manager.listener.port)],
+      ),
+    );
+    await rig.authorize(viewer);
+    final pc = viewer.debugPeerConnection!;
+    await waitUntilAsync(
+      () async => (await probeInboundVideo(pc)).decoding,
+      timeout: const Duration(seconds: 25),
+      what: 'video over the LAN address',
+    );
+    final pair = await probeSelectedPair(pc);
+    print('selected pair over the LAN address: $pair');
+    expect(pair!.localType, isNot('relay'));
+    expect(viewer.peer.addresses, isNotEmpty, reason: 'the host advertises where it can be reached');
+  });
+
+  e2e('k) a denied request ends the session without ever capturing the screen', (rig) async {
+    rig.host.prompts.accept = false;
+    final viewer = await rig.dial();
+    await waitUntil(() => viewer.authPrompt != null, what: 'viewer is offered the request method');
+    viewer.requestAccess();
+    await waitUntil(() => viewer.isEnded, what: 'viewer session ends after the denial');
+    expect(viewer.endReason, 'denied');
+    await waitUntil(() => rig.host.manager.history.records.isNotEmpty, what: 'host records the session');
+    expect(rig.host.manager.history.records.single.reason, 'denied');
+    expect(rig.host.prompts.asked<AcceptRequestPrompt>(), hasLength(1));
+    expect(rig.host.platform.beforeCaptureCalls, 0, reason: 'a denied viewer never sees the screen');
+    expect(rig.host.badge.shown, isEmpty);
+    expect(rig.host.manager.hostSessions, isEmpty);
+  });
+
+  e2e('l) five wrong passwords lock password authorization out', (rig) async {
+    var viewer = await rig.dial();
+    await waitUntil(() => viewer.authPrompt != null, what: 'viewer is asked for a password');
+    for (var i = 1; i <= 5; i++) {
+      await viewer.submitPassword('wrong-$i');
+      if (i < 5) {
+        await waitUntil(() => rig.host.sent('auth_result').length == i, what: 'refusal $i');
+        expect(rig.host.sent('auth_result').last['retry'], isTrue);
+        await waitUntil(() => viewer.authPrompt?.error != null, what: 'viewer asks again after $i');
+      }
+    }
+    await waitUntil(() => viewer.isEnded, what: 'the fifth failure ends the session');
+    final fifth = rig.host.sent('auth_result').last;
+    expect(fifth['reason'], 'bad_password');
+    expect(fifth['retry'], isFalse);
+
+    // Even the right password is refused now.
+    viewer = await rig.dial();
+    await waitUntil(() => viewer.authPrompt != null, what: 'second session asks for a password');
+    await viewer.submitPassword(rig.host.credentials.oneTimePassword);
+    await waitUntil(() => viewer.isEnded, what: 'the locked host refuses');
+    expect(rig.host.sent('auth_result').last['reason'], 'locked');
+    expect(rig.host.platform.beforeCaptureCalls, 0);
+  });
+
+  e2e('m) a view-only grant lets the picture through and keeps files and clipboard shut',
+      (rig) async {
+    final tmp = await Directory.systemTemp.createTemp('thelxis_e2e_viewonly_');
+    addTearDown(() async {
+      try {
+        await tmp.delete(recursive: true);
+      } on FileSystemException {
+        // Temp files only.
+      }
+    });
+    final secret = await File('${tmp.path}/secret.txt').writeAsString('not for you');
+    final viewer = await rig.dial();
+    final host = await rig.authorize(viewer);
+    expect(viewer.permissions, Permissions.viewOnly);
+    expect(viewer.viewOnly, isTrue);
+    expect(host.controlEnabled, isFalse);
+
+    final pc = viewer.debugPeerConnection!;
+    await waitUntilAsync(
+      () async => (await probeInboundVideo(pc)).decoding,
+      timeout: const Duration(seconds: 25),
+      what: 'view-only still gets the picture',
+    );
+
+    await waitUntil(() => viewer.files != null && host.files != null, what: 'file endpoints');
+    expect(host.files!.allowed, isFalse);
+    await expectLater(
+      viewer.files!.remote.roots(),
+      throwsA(isA<RemoteFsException>().having((e) => e.kind, 'kind', RemoteFsErrorKind.denied)),
+    );
+    await expectLater(
+      viewer.files!.remote.list(tmp.path),
+      throwsA(isA<RemoteFsException>().having((e) => e.kind, 'kind', RemoteFsErrorKind.denied)),
+    );
+    await viewer.files!.sendFiles([secret.path]);
+    await viewer.files!.whenIdle().timeout(const Duration(seconds: 20));
+    final upload = viewer.files!.transfers.singleWhere((t) => t.isSend);
+    expect(upload.status, TransferStatus.failed);
+    expect(upload.error, TransferError.denied);
+    expect(await rig.host.incoming.list().toList(), isEmpty);
+
+    rig.viewer.clipboard.text = 'must stay local';
+    await Future<void>.delayed(const Duration(seconds: 3));
+    expect(rig.host.clipboard.text, isNull);
+    expect(rig.viewer.sent('clipboard'), isEmpty);
+    expect(rig.host.injector.events, isEmpty, reason: 'no input reaches a view-only host');
+  }, hostPermissions: Permissions.viewOnly);
+
+  e2e('n) pausing control on the host stops input at once and releases what was held', (rig) async {
+    final viewer = await rig.dial();
+    final host = await rig.authorize(viewer);
+    final inj = rig.host.injector;
+    await waitUntil(() {
+      viewer.encoder.mouseMove(0.1, 0.1);
+      return inj.all<InjectedMove>().isNotEmpty;
+    }, what: 'input channel delivers');
+    viewer.encoder.keyDown(Hid.controlLeft);
+    await waitUntil(() => inj.all<InjectedKey>().any((k) => k.down), what: 'held key reaches the host');
+    final mark = inj.events.length;
+
+    host.setControlAllowed(false);
+    await waitUntil(() => viewer.viewOnly, what: 'viewer learns control was paused');
+    expect(viewer.permissions!.control, isFalse);
+    expect(inj.events.skip(mark).map((e) => e.toString()), containsAll(['key(0x700e0, up)', 'releaseAll()']));
+    expect(viewer.encoder.heldKeys, isEmpty);
+
+    final paused = inj.events.length;
+    viewer.encoder.mouseMove(0.9, 0.9);
+    viewer.encoder.keyDown(Hid.keyA);
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    expect(inj.events.length, paused, reason: 'nothing is injected while control is paused');
+
+    host.setControlAllowed(true);
+    await waitUntil(() => !viewer.viewOnly, what: 'viewer learns control is back');
+    await waitUntil(() {
+      viewer.encoder.mouseMove(0.2, 0.2);
+      return inj.events.skip(paused).any((e) => e is InjectedMove);
+    }, what: 'input flows again');
+  });
+
+  e2e('o) switching the display re-captures and aims input at the new display', (rig) async {
+    final viewer = await rig.dial();
+    final host = await rig.authorize(viewer);
+    await waitUntil(() => viewer.displays.length == 2, what: 'viewer lists both displays');
+    expect(viewer.activeDisplayId, '0');
+    final pc = viewer.debugPeerConnection!;
+    await waitUntilAsync(
+      () async => (await probeInboundVideo(pc)).decoding,
+      timeout: const Duration(seconds: 25),
+      what: 'first display decodes',
+    );
+    final before = (await probeInboundVideo(pc)).framesDecoded;
+
+    viewer.selectDisplay('1');
+    await waitUntil(() => viewer.activeDisplayId == '1', what: 'host confirms the new display');
+    await waitUntilAsync(
+      () async => (await probeInboundVideo(pc)).framesDecoded > before,
+      timeout: const Duration(seconds: 25),
+      what: 'frames keep arriving after the switch',
+    );
+    final inj = rig.host.injector;
+    await waitUntil(() {
+      viewer.encoder.mouseMove(0.5, 0.5);
+      return inj.all<InjectedMove>().any((m) => m.display.id == '1');
+    }, what: 'input now targets display 1');
+    expect(host.phase, SessionPhase.active);
+  }, hostDisplays: 2);
+
+  e2e('p) two viewers at once: the badge lists both and capture stops with the last one', (rig) async {
+    final first = await rig.dial();
+    await rig.authorize(first);
+    final second = await rig.connectExtra(await rig.addViewer('Viewer2'));
+    await waitUntil(() => rig.host.manager.liveHostSessions.length == 2, what: 'two live sessions');
+    await waitUntil(() => (rig.host.badge.current?.peers.length ?? 0) == 2, what: 'badge lists both viewers');
+    expect(rig.host.badge.current!.peers, unorderedEquals(['Viewer', 'Viewer2']));
+    expect(rig.host.manager.captures.active, 2);
+    expect(rig.host.platform.beforeCaptureCalls, 1, reason: 'the capture service starts with the first viewer');
+
+    for (final s in [first, second]) {
+      await waitUntilAsync(
+        () async => (await probeInboundVideo(s.debugPeerConnection!)).decoding,
+        timeout: const Duration(seconds: 25),
+        what: 'both viewers decode video',
+      );
+    }
+
+    await first.end('user');
+    await waitUntil(() => rig.host.manager.liveHostSessions.length == 1, what: 'first viewer gone');
+    await waitUntil(() => rig.host.badge.current?.peers.length == 1, what: 'badge shrinks to one viewer');
+    expect(rig.host.badge.current!.peers, ['Viewer2']);
+    expect(rig.host.badge.dismissCalls, 0, reason: 'the badge stays while anyone is watching');
+    expect(rig.host.platform.afterCaptureCalls, 0);
+
+    await second.end('user');
+    await waitUntil(() => rig.host.badge.current == null, what: 'badge goes with the last viewer');
+    expect(rig.host.manager.captures.active, 0);
+    expect(rig.host.platform.afterCaptureCalls, 1);
+  });
+
+  e2e('q) reverse connection: the controlled device dials out and offers control', (rig) async {
     final hostSession = await rig.host.manager.offerControl(ConnectTarget(
       id: rig.viewer.identity.id,
       addresses: [NetAddress('127.0.0.1', rig.viewer.manager.listener.port)],
@@ -482,7 +688,7 @@ void main() {
     }, what: 'input flows in reverse mode');
   }, viewerListens: true);
 
-  e2e('k) the session survives a dropped signaling connection and resumes it', (rig) async {
+  e2e('r) the session survives a dropped signaling connection and resumes it', (rig) async {
     final viewer = await rig.dial();
     final host = await rig.authorize(viewer);
     final pc = viewer.debugPeerConnection!;
@@ -523,11 +729,16 @@ void e2e(
   Future<void> Function(E2ERig rig) body, {
   Permissions? hostPermissions,
   bool viewerListens = false,
+  int hostDisplays = 1,
 }) {
   testWidgets(name, (tester) async {
     final audit = TimerAudit();
     await runZoned(() async {
-      final rig = await E2ERig.start(hostPermissions: hostPermissions, viewerListens: viewerListens);
+      final rig = await E2ERig.start(
+        hostPermissions: hostPermissions,
+        viewerListens: viewerListens,
+        hostDisplays: hostDisplays,
+      );
       try {
         await body(rig);
       } catch (_) {

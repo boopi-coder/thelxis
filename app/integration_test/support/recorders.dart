@@ -93,16 +93,35 @@ class RecordingInjector implements InputInjector {
 /// A private clipboard per peer: both peers live in one process and would
 /// otherwise share the single OS clipboard.
 class FakeClipboard {
-  String? text;
-  final List<String> writes = [];
+  FakeClipboard(this.name);
+
+  final String name;
+  static final Stopwatch _clock = Stopwatch()..start();
+  String? _text;
+
+  /// Who changed the clipboard and when (`user` = the test, `sync` = the app).
+  final List<String> timeline = [];
+
+  String? get text => _text;
+
+  /// The user copies something.
+  set text(String? value) {
+    _text = value;
+    _note('user', value);
+  }
 
   ClipboardAccess get access => ClipboardAccess(
-        read: () async => text,
+        read: () async => _text,
         write: (value) async {
-          text = value;
-          writes.add(value);
+          _text = value;
+          _note('sync', value);
         },
       );
+
+  void _note(String who, String? value) {
+    final shown = value == null ? 'null' : '${value.length}:${value.substring(0, value.length < 10 ? value.length : 10)}';
+    timeline.add('${_clock.elapsedMilliseconds} ms $name $who -> $shown');
+  }
 }
 
 /// Tracks every timer created while it is installed as the zone specification,
