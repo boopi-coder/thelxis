@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -8,12 +9,26 @@ import 'package:integration_test/integration_test.dart';
 /// loads, ICE/DTLS/SCTP work over the host network, the X11 capturer sees the
 /// virtual display) before any Thelxis code is involved. When this fails the
 /// problem is the runner or the plugin, not the application.
+/// The flutter tool drops the app's stdout, so a native crash leaves no trace.
+/// Progress goes to a file that the workflow prints when the run fails.
+void mark(String step) {
+  File('/tmp/e2e_progress.log').writeAsStringSync(
+    '${DateTime.now().toIso8601String()} $step\n',
+    mode: FileMode.append,
+    flush: true,
+  );
+}
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  mark('main');
 
   testWidgets('two raw peers exchange a data channel message', (tester) async {
+    mark('data channel test: creating peer connections');
     final a = await createPeerConnection({'iceServers': <dynamic>[]});
+    mark('created A');
     final b = await createPeerConnection({'iceServers': <dynamic>[]});
+    mark('created B');
     final received = Completer<String>();
     a.onIceCandidate = (c) => b.addCandidate(c);
     b.onIceCandidate = (c) => a.addCandidate(c);
@@ -23,17 +38,21 @@ void main() {
       };
     };
     final dc = await a.createDataChannel('probe', RTCDataChannelInit());
+    mark('created data channel');
     final opened = Completer<void>();
     dc.onDataChannelState = (s) {
       if (s == RTCDataChannelState.RTCDataChannelOpen && !opened.isCompleted) opened.complete();
     };
     final offer = await a.createOffer();
+    mark('offer created');
     await a.setLocalDescription(offer);
     await b.setRemoteDescription(offer);
     final answer = await b.createAnswer();
     await b.setLocalDescription(answer);
     await a.setRemoteDescription(answer);
+    mark('negotiated');
     await opened.future.timeout(const Duration(seconds: 20));
+    mark('channel open');
     await dc.send(RTCDataChannelMessage('ping'));
     expect(await received.future.timeout(const Duration(seconds: 10)), 'ping');
     await dc.close();
@@ -42,7 +61,9 @@ void main() {
   });
 
   testWidgets('the X11 capturer delivers decoded frames from the virtual display', (tester) async {
+    mark('capture test: listing sources');
     final sources = await desktopCapturer.getSources(types: [SourceType.Screen]);
+    mark('sources: ${sources.length}');
     // ignore: avoid_print
     print('capture sources: ${[for (final s in sources) '${s.id}/${s.name}']}');
     expect(sources, isNotEmpty);
@@ -55,6 +76,7 @@ void main() {
       'audio': false,
     });
     final track = stream.getVideoTracks().first;
+    mark('got display media');
 
     final a = await createPeerConnection({'iceServers': <dynamic>[]});
     final b = await createPeerConnection({'iceServers': <dynamic>[]});

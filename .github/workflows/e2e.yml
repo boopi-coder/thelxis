@@ -57,29 +57,49 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
+      # The runner has no sound card; libwebrtc's audio device module wants a PulseAudio server to talk to.
+      - name: Start a PulseAudio server with a null sink
+        run: |
+          sudo apt-get install -y --no-install-recommends pulseaudio gdb
+          export XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg"
+          mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+          pulseaudio --start --exit-idle-time=-1 --daemonize=yes || true
+          sleep 1
+          pactl load-module module-null-sink sink_name=e2e_sink || true
+          pactl info | head -n 5 || true
+
       - name: Run end-to-end tests
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
           set -o pipefail
-          mkdir -p "$RUNNER_TEMP/e2e"
-          xvfb-run -a -s "-screen 0 1280x800x24" \
-            flutter test integration_test -d linux --reporter expanded -v 2>&1 | tee "$RUNNER_TEMP/e2e/test.log"
+          mkdir -p "$RUNNER_TEMP/e2e" "$RUNNER_TEMP/cores"
+          export XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg"
+          sudo sysctl -w kernel.core_pattern="$RUNNER_TEMP/cores/core.%e.%p" || true
+          ulimit -c unlimited
+          # One flutter invocation per file: a crashed app must not stop the next file from running.
+          status=0
+          for f in integration_test/*_test.dart; do
+            echo "::group::$f"
+            xvfb-run -a -s "-screen 0 1280x800x24" \
+              flutter test "$f" -d linux --reporter expanded -v 2>&1 | tee -a "$RUNNER_TEMP/e2e/test.log" || status=1
+            pkill -f 'bundle/thelxis' || true
+            echo "::endgroup::"
+          done
+          exit $status
 
-      # When the test process dies without a word (native crash), launching the bundle by hand shows
-      # its stdout/stderr, which the flutter tool does not forward.
-      - name: Run the bundle directly for crash output
+      # The flutter tool does not forward the app's stdout/stderr, so a native crash is silent: read the
+      # progress markers the tests write and the backtrace of any core dump.
+      - name: Crash diagnostics
         if: failure()
         continue-on-error: true
-        env:
-          LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
-          cd build/linux/x64/debug/bundle
-          ls -la . lib
-          ldd lib/libflutter_webrtc_plugin.so | grep -i "not found" || true
-          xvfb-run -a -s "-screen 0 1280x800x24" timeout 60 ./thelxis > "$RUNNER_TEMP/e2e/bundle.log" 2>&1 || echo "exit code $?"
-          tail -n 120 "$RUNNER_TEMP/e2e/bundle.log"
-          dmesg 2>/dev/null | tail -n 20 || true
+          echo "--- progress markers"; cat /tmp/e2e_progress.log 2>/dev/null || echo none
+          echo "--- cores"; ls -la "$RUNNER_TEMP/cores" || true
+          for c in "$RUNNER_TEMP"/cores/core.*; do
+            [ -f "$c" ] || continue
+            gdb -batch -ex "bt 40" -ex "info sharedlibrary" build/linux/x64/debug/bundle/thelxis "$c" 2>&1 | tail -n 120
+          done
 
       - name: Upload logs
         if: failure()
