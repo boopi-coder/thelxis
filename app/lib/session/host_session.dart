@@ -115,6 +115,12 @@ class HostSession extends SessionBase {
   bool _authBusy = false;
   bool _usedPassword = false;
   bool _ended = false;
+
+  /// Why the session is about to end after a refusal. The viewer usually
+  /// hangs up the moment it reads the refusal, inside the grace period the
+  /// host leaves for the answer to arrive; the session still ended because it
+  /// was refused, not because the viewer left.
+  String? _pendingEnd;
   bool _remoteSet = false;
   bool _captureHeld = false;
   bool _sharing = false;
@@ -266,7 +272,7 @@ class HostSession extends SessionBase {
             _pendingCandidates.add(c);
           }
         case RemoteBye():
-          await end('remote');
+          await end(_pendingEnd ?? 'remote');
         case SignatureFailure(:final message):
           env.onNotice(S.current.t('warn.sig.title'), message);
           await end('error');
@@ -403,7 +409,7 @@ class HostSession extends SessionBase {
       case AuthMessage():
         unawaited(_onAuth(m));
       case ByeMessage():
-        unawaited(end('remote'));
+        unawaited(end(_pendingEnd ?? 'remote'));
       case SelectDisplayMessage(:final id):
         if (_authorized) _enqueue(() => _selectDisplay(id));
       case QualityMessage(:final preset):
@@ -444,8 +450,9 @@ class HostSession extends SessionBase {
         case AuthDeny(:final reason, :final retry):
           _send(AuthResultMessage.fail(reason, retry: retry));
           if (!retry) {
+            final ending = _pendingEnd = reason == 'denied' ? 'denied' : 'error';
             await Future<void>.delayed(const Duration(milliseconds: 300));
-            await end(reason == 'denied' ? 'denied' : 'error');
+            await end(ending);
           }
         case AuthNeedsApproval():
           break;

@@ -44,32 +44,53 @@ class ClipboardSync {
   Timer? _timer;
   String? _last;
   bool _busy = false;
+  bool _starting = false;
+
+  /// Bumped by [stop]: a [start] still waiting for its baseline must then
+  /// stand down instead of arming a timer nobody can cancel any more.
+  int _runs = 0;
+
+  /// Number of [applyRemote] writes in progress, and a counter that changes
+  /// whenever one begins or ends. A poll whose read overlapped a write holds
+  /// a value from before it, which is not something the user copied.
+  int _writes = 0;
+  int _remoteEpoch = 0;
 
   bool get running => _timer != null;
 
   /// Starts polling. The current clipboard content is taken as the baseline so
   /// it is not sent just because sync was switched on.
   Future<void> start() async {
-    if (_timer != null) return;
+    if (_timer != null || _starting) return;
+    _starting = true;
+    final run = _runs;
     try {
       _last = await _read();
     } on Object catch (e) {
       _log.w('clipboard baseline read failed', e);
+    } finally {
+      _starting = false;
     }
+    if (run != _runs) return;
     _timer = Timer.periodic(interval, (_) => poll());
   }
 
   void stop() {
+    _runs++;
     _timer?.cancel();
     _timer = null;
   }
 
   /// One poll step; public so tests can drive it.
   Future<void> poll() async {
-    if (_busy) return;
+    if (_busy || _writes > 0) return;
     _busy = true;
+    final epoch = _remoteEpoch;
     try {
       final text = await _read();
+      // The peer's text landed while the read was in flight: what came back
+      // predates it, and sending it would put the old text over the new one.
+      if (epoch != _remoteEpoch) return;
       if (text == null || text.isEmpty || text == _last) return;
       _last = text;
       if (utf8.encode(text).length > kMaxClipboardSendBytes) {
@@ -90,11 +111,16 @@ class ClipboardSync {
       _log.w('remote clipboard exceeds limit, ignored');
       return;
     }
+    _writes++;
+    _remoteEpoch++;
     _last = text;
     try {
       await _write(text);
     } on Object catch (e) {
       _log.w('clipboard write failed', e);
+    } finally {
+      _writes--;
+      _remoteEpoch++;
     }
   }
 

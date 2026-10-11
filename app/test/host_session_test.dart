@@ -142,6 +142,16 @@ void main() {
     expect(r.streams, isEmpty);
   });
 
+  test('a viewer that hangs up on reading the refusal does not turn "denied" into "remote"', () async {
+    r.approval = (p) async => ApprovalResult.denied;
+    r.open();
+    r.session.debugReceiveControl({'t': 'auth', 'method': 'request', 'user': 'Mallory'});
+    await r.nextOf('auth_result');
+    r.session.debugReceiveControl({'t': 'bye', 'reason': 'user'});
+    await untilTrue(() => r.session.isEnded);
+    expect(r.session.endReason, 'denied');
+  });
+
   test('a trusted viewer connects without any prompt', () async {
     await r.trusted.add(key: r.viewerId.publicKeyB64, id: r.viewerId.id, name: 'Alice', permissions: const Permissions());
     r.approval = (p) async => fail('no prompt expected for a trusted device');

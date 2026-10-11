@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -236,6 +237,78 @@ void main() {
       clip = 'x' * (kMaxClipboardSendBytes + 1);
       await sync.poll();
       expect(sent, hasLength(1), reason: 'oversized clipboards are skipped');
+    });
+
+    test('a read that was in flight when the peer\'s text arrived is not sent back', () async {
+      var clip = 'baseline';
+      final sent = <String>[];
+      Completer<void>? gate;
+      final sync = ClipboardSync(
+        onLocalChange: sent.add,
+        readClipboard: () {
+          final snapshot = clip; // what the platform answers: the value at call time
+          final g = gate;
+          return g == null ? Future.value(snapshot) : g.future.then((_) => snapshot);
+        },
+        writeClipboard: (t) async => clip = t,
+      );
+      await sync.start();
+      addTearDown(sync.dispose);
+      clip = 'copied here';
+      await sync.poll();
+      expect(sent, ['copied here']);
+
+      gate = Completer<void>();
+      final stale = sync.poll(); // reads 'copied here' ...
+      await sync.applyRemote('copied there'); // ... while the peer's text lands
+      gate.complete();
+      await stale;
+      gate = null;
+      await sync.poll();
+      expect(sent, ['copied here'], reason: 'the old text must not overwrite the peer\'s newer copy');
+      expect(clip, 'copied there');
+    });
+
+    test('a poll during the write of the peer\'s text does not mistake the old clipboard for a copy', () async {
+      var clip = 'baseline';
+      final sent = <String>[];
+      final writeGate = Completer<void>();
+      final sync = ClipboardSync(
+        onLocalChange: sent.add,
+        readClipboard: () async => clip,
+        writeClipboard: (t) async {
+          await writeGate.future;
+          clip = t;
+        },
+      );
+      await sync.start();
+      addTearDown(sync.dispose);
+      clip = 'copied here';
+      await sync.poll();
+      sent.clear();
+
+      final applying = sync.applyRemote('copied there');
+      await sync.poll(); // the platform still holds 'copied here'
+      expect(sent, isEmpty);
+      writeGate.complete();
+      await applying;
+      await sync.poll();
+      expect(sent, isEmpty);
+    });
+
+    test('stopping while the baseline is being read leaves no timer running', () async {
+      final gate = Completer<String?>();
+      final sync = ClipboardSync(
+        onLocalChange: (_) {},
+        readClipboard: () => gate.future,
+        writeClipboard: (_) async {},
+      );
+      final starting = sync.start();
+      await sync.start(); // a second start while the first waits does nothing
+      sync.stop();
+      gate.complete('x');
+      await starting;
+      expect(sync.running, isFalse);
     });
 
     test('oversized remote text is ignored', () async {
