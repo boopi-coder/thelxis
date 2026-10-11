@@ -198,6 +198,12 @@ X→Y {"t":"cancel","xid":7}
   and restores `mtime`. **Name sanitization is mandatory**: reject absolute paths, drive letters, `..` segments,
   NUL/control characters, and Windows-reserved names; never follow symlinks out of the destination.
 - One data stream per direction at a time (queue); the sender pauses while the channel's `bufferedAmount` > 1 MiB.
+- Optional fields (ignored by older peers): `fs_roots_r.items[].kind` ∈ `home|desktop|documents|downloads|drive|storage`
+  (lets the viewer localize labels); paging `fs_list.offset`/`limit` → `fs_list_r.offset`/`total`, and
+  `fs_list_r.items[].hidden`. Hosts keep each JSON reply ≤ 180 KiB (SCTP messages are capped at 256 KiB).
+- Only a host honors `put.dest`, and only for an existing absolute directory; a viewer ignores `dest` and the host's
+  `name` when answering its own `get`. UNC, relative and `..` paths are rejected for `dest`, `fs_list` and `get`.
+  A `get` for a missing/unreadable file is answered with `reject` reason `io`.
 - Clipboard (§6.2 `clipboard`) carries text in v0.1; images/file lists are v0.2.
 
 ## 7. LAN discovery (UDP 47102)

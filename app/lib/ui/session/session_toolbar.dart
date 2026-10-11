@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../files/files.dart';
 import '../../l10n/strings.dart';
 import '../../protocol/models.dart';
 import '../../session/touch_gestures.dart';
@@ -116,6 +117,8 @@ class SessionToolbar extends StatelessWidget {
                     selectedIcon: const Icon(Icons.folder_open_rounded),
                     onPressed: onToggleFiles,
                   ),
+                if (canFiles && session.files != null)
+                  SendFilesMenuButton(endpoint: session.files!, compact: true),
                 if (canControl)
                   IconButton(
                     tooltip: session.userViewOnly ? l.t('toolbar.viewOnly.on') : l.t('toolbar.viewOnly.off'),
@@ -279,6 +282,18 @@ class SessionToolbar extends StatelessWidget {
                           checked: touchMode == TouchMode.direct),
                     ],
                     const PopupMenuDivider(),
+                    if (canFiles && session.files != null) ...[
+                      item(
+                        FilesStrings.of(context).sendFiles,
+                        () => pickAndSendFiles(context, session.files!),
+                        icon: Icons.upload_file_rounded,
+                      ),
+                      item(
+                        FilesStrings.of(context).sendFolder,
+                        () => pickAndSendFiles(context, session.files!, kind: PickKind.folder),
+                        icon: Icons.drive_folder_upload_rounded,
+                      ),
+                    ],
                     if (canClipboard)
                       item(
                         session.clipboardSyncOn ? l.t('toolbar.clipboard.on') : l.t('toolbar.clipboard.off'),

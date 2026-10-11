@@ -11,6 +11,7 @@ import '../session/session_base.dart';
 import '../session/session_history.dart';
 import '../session/session_manager.dart';
 import '../session/viewer_session.dart';
+import 'session/files_slot.dart';
 import 'shell_controller.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
@@ -55,7 +56,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
         PageTitle(s.t('sessions.title'), subtitle: s.t('sessions.subtitle')),
         SectionHeader(s.t('sessions.incoming')),
         if (hosts.isEmpty)
-          Card(child: EmptyState(icon: Icons.shield_outlined, title: s.t('sessions.incoming.empty')))
+          Card(
+            child: EmptyState(icon: Icons.shield_outlined, title: s.t('sessions.incoming.empty')),
+          )
         else
           for (final s in hosts)
             Padding(
@@ -64,7 +67,12 @@ class _SessionsScreenState extends State<SessionsScreen> {
             ),
         SectionHeader(s.t('sessions.outgoing')),
         if (viewers.isEmpty)
-          Card(child: EmptyState(icon: Icons.cast_connected_rounded, title: s.t('sessions.outgoing.empty')))
+          Card(
+            child: EmptyState(
+              icon: Icons.cast_connected_rounded,
+              title: s.t('sessions.outgoing.empty'),
+            ),
+          )
         else
           for (final s in viewers)
             Padding(
@@ -86,14 +94,12 @@ class _SessionsScreenState extends State<SessionsScreen> {
               : TextButton(onPressed: history.clear, child: Text(s.t('sessions.clear'))),
         ),
         if (history.records.isEmpty)
-          Card(child: EmptyState(icon: Icons.history_rounded, title: s.t('sessions.history.empty')))
+          Card(
+            child: EmptyState(icon: Icons.history_rounded, title: s.t('sessions.history.empty')),
+          )
         else
           Card(
-            child: Column(
-              children: [
-                for (final r in history.records) _HistoryRow(record: r),
-              ],
-            ),
+            child: Column(children: [for (final r in history.records) _HistoryRow(record: r)]),
           ),
       ],
     );
@@ -101,13 +107,13 @@ class _SessionsScreenState extends State<SessionsScreen> {
 }
 
 String _phaseLabel(S s, SessionPhase p) => switch (p) {
-      SessionPhase.connecting => s.t('phase.connecting'),
-      SessionPhase.authenticating => s.t('phase.authorizing'),
-      SessionPhase.awaitingApproval => s.t('phase.awaiting'),
-      SessionPhase.active => s.t('phase.active'),
-      SessionPhase.reconnecting => s.t('phase.reconnecting'),
-      SessionPhase.ended => s.t('phase.ended'),
-    };
+  SessionPhase.connecting => s.t('phase.connecting'),
+  SessionPhase.authenticating => s.t('phase.authorizing'),
+  SessionPhase.awaitingApproval => s.t('phase.awaiting'),
+  SessionPhase.active => s.t('phase.active'),
+  SessionPhase.reconnecting => s.t('phase.reconnecting'),
+  SessionPhase.ended => s.t('phase.ended'),
+};
 
 class _HostRow extends StatelessWidget {
   const _HostRow({required this.session});
@@ -132,10 +138,22 @@ class _HostRow extends StatelessWidget {
               '${session.stats.value.path.name == 'unknown' ? '' : ' · ${session.stats.value.pathLabel}'}',
             ),
             isThreeLine: true,
-            trailing: FilledButton.tonal(
-              style: FilledButton.styleFrom(foregroundColor: t.colorScheme.error),
-              onPressed: () => session.end('user'),
-              child: Text(s.t('banner.stop')),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (hostCanShowFiles(session))
+                  IconButton(
+                    key: const ValueKey('host-files'),
+                    tooltip: s.t('toolbar.files'),
+                    icon: const Icon(Icons.folder_open_rounded),
+                    onPressed: () => showSessionFilesPanel(context, session),
+                  ),
+                FilledButton.tonal(
+                  style: FilledButton.styleFrom(foregroundColor: t.colorScheme.error),
+                  onPressed: () => session.end('user'),
+                  child: Text(s.t('banner.stop')),
+                ),
+              ],
             ),
           ),
         );
@@ -162,11 +180,14 @@ class _ViewerRow extends StatelessWidget {
             contentPadding: const EdgeInsets.symmetric(horizontal: Gap.l, vertical: Gap.xs),
             leading: CircleAvatar(child: Icon(osIcon(session.peer.os))),
             title: Text(session.peer.name),
-            subtitle: Text('${_phaseLabel(s, session.phase)} · ${formatDuration(session.duration)}'),
+            subtitle: Text(
+              '${_phaseLabel(s, session.phase)} · ${formatDuration(session.duration)}',
+            ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (!session.isEnded) TextButton(onPressed: onOpen, child: Text(s.t('sessions.open'))),
+                if (!session.isEnded)
+                  TextButton(onPressed: onOpen, child: Text(s.t('sessions.open'))),
                 TextButton(
                   onPressed: onClose,
                   child: Text(session.isEnded ? s.t('common.close') : s.t('sessions.end')),

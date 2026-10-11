@@ -17,6 +17,7 @@ import '../net/listener.dart';
 import '../net/net_address.dart';
 import '../net/peer_identity.dart';
 import '../net/signaling_channel.dart';
+import '../files/files.dart';
 import '../l10n/strings.dart';
 import '../platform/host_platform.dart';
 import '../platform/session_badge.dart';
@@ -32,6 +33,29 @@ import 'session_history.dart';
 import 'viewer_session.dart';
 
 const _log = Logger('sessions');
+
+/// A file-transfer event of some session, for in-app notifications
+/// ("Alice sent report.pdf").
+class FileNotice {
+  const FileNotice(this.session, this.event);
+
+  final SessionBase session;
+  final FileTransferEvent event;
+
+  /// The text to show, or null when the event is not worth a notification.
+  String? text(FilesStrings strings) {
+    final peer = session.peer.name;
+    final name = event.transfer.name;
+    return switch (event.kind) {
+      FileTransferEventKind.received => strings.fileReceivedFrom(peer, name),
+      // On the controlled device a file starting to arrive is worth knowing.
+      FileTransferEventKind.incomingStarted => session.isHost ? strings.incomingFrom(peer, name) : null,
+      FileTransferEventKind.sent => strings.fileSent(name),
+      FileTransferEventKind.failed => strings.transferFailed(name),
+      FileTransferEventKind.cancelled => null,
+    };
+  }
+}
 
 /// A user-presentable connection failure.
 class ConnectException implements Exception {
@@ -108,6 +132,14 @@ class SessionManager extends ChangeNotifier {
   late final SignalingListener listener;
   late final Dialer dialer;
   final PromptQueue prompts = PromptQueue();
+  final StreamController<FileNotice> _fileNotices = StreamController<FileNotice>.broadcast();
+
+  /// File-transfer events of every session (the UI turns them into toasts).
+  Stream<FileNotice> get fileNotices => _fileNotices.stream;
+
+  /// Language code of the current UI language, for text built without a
+  /// BuildContext.
+  String get languageCode => _strings.language.code;
   final CaptureRegistry captures = CaptureRegistry();
 
   final List<HostSession> _hosts = [];
@@ -449,6 +481,9 @@ class SessionManager extends ChangeNotifier {
   void _track(SessionBase s) {
     s.addListener(_onSessionChanged);
     s.onEnded = _onSessionEnded;
+    s.onFileEvent = (session, event) {
+      if (!_fileNotices.isClosed) _fileNotices.add(FileNotice(session, event));
+    };
   }
 
   void _onSessionChanged() {
@@ -546,6 +581,7 @@ class SessionManager extends ChangeNotifier {
     unawaited(_incomingSub?.cancel());
     unawaited(_captureStopSub?.cancel());
     unawaited(_badgeStopSub?.cancel());
+    unawaited(_fileNotices.close());
     unawaited(listener.dispose());
     super.dispose();
   }

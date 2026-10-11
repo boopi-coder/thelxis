@@ -1,78 +1,61 @@
 import 'package:flutter/material.dart';
 
+import '../../files/files.dart';
 import '../../l10n/strings.dart';
+import '../../session/host_session.dart';
+import '../../session/session_base.dart';
 import '../../session/viewer_session.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
-/// Builds the file-transfer side panel for a session.
-typedef SessionFilesPanelBuilder = Widget Function(
-  BuildContext context,
-  ViewerSession session,
-  VoidCallback close,
-);
+/// Width of the file panel on desktop.
+const double kFilesPanelWidth = 400;
 
-/// Wraps the remote picture so files dropped on it can be sent.
-typedef SessionDropWrapper = Widget Function(
-  BuildContext context,
-  ViewerSession session,
-  Widget child,
-);
+/// The file-transfer panel of one session, or a short wait state while the
+/// `files` channel is not up yet.
+class SessionFilesPanel extends StatelessWidget {
+  const SessionFilesPanel({super.key, required this.session, required this.onClose});
 
-/// INTEGRATION POINT for the file-transfer module (`lib/files`).
-///
-/// The session view shows [panelBuilder]'s widget in a side panel (desktop)
-/// or bottom sheet (phones) when the toolbar's Files button is pressed, and
-/// wraps the remote picture with [dropWrapper]. The module installs both at
-/// startup (for example `SessionFilesSlot.panelBuilder = (c, s, close) =>
-/// FileTransferPanel(...)`); until then a placeholder is shown.
-abstract final class SessionFilesSlot {
-  static SessionFilesPanelBuilder panelBuilder = _placeholderPanel;
-
-  static SessionDropWrapper dropWrapper = (context, session, child) => child;
-
-  static Widget _placeholderPanel(BuildContext context, ViewerSession session, VoidCallback close) {
-    final s = context.s;
-    return Column(
-      children: [
-        _PanelHeader(title: s.t('files.title'), onClose: close),
-        Expanded(
-          child: EmptyState(
-            icon: Icons.folder_copy_outlined,
-            title: s.t('files.soon.title'),
-            message: s.t('files.soon.body'),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _PanelHeader extends StatelessWidget {
-  const _PanelHeader({required this.title, required this.onClose});
-
-  final String title;
+  final SessionBase session;
   final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(Gap.l, Gap.s, Gap.s, 0),
-      child: Row(
-        children: [
-          Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
-          IconButton(
-            tooltip: context.s.t('common.close'),
-            icon: const Icon(Icons.close_rounded),
-            onPressed: onClose,
-          ),
-        ],
-      ),
+    return ValueListenableBuilder<FileTransferEndpoint?>(
+      valueListenable: session.filesListenable,
+      builder: (context, endpoint, _) {
+        if (endpoint == null) {
+          final s = context.s;
+          return Column(
+            children: [
+              Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.all(Gap.s),
+                  child: IconButton(
+                    tooltip: s.t('common.close'),
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: onClose,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: EmptyState(
+                  icon: Icons.folder_off_outlined,
+                  title: s.t('files.unavailable'),
+                  message: s.t('files.unavailable.hint'),
+                ),
+              ),
+            ],
+          );
+        }
+        return FileTransferPanel(endpoint, onClose: onClose);
+      },
     );
   }
 }
 
-/// Side panel (wide) that slides in over the right edge of the session view.
+/// Side panel (desktop) that slides over the right edge of the session view.
 class SessionFilesPanelHost extends StatelessWidget {
   const SessionFilesPanelHost({super.key, required this.session, required this.onClose});
 
@@ -88,22 +71,73 @@ class SessionFilesPanelHost extends StatelessWidget {
       borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)),
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
-        width: 380,
-        child: SessionFilesSlot.panelBuilder(context, session, onClose),
+        width: kFilesPanelWidth,
+        child: SessionFilesPanel(session: session, onClose: onClose),
       ),
     );
   }
 }
 
-/// Opens the panel as a modal bottom sheet (phones).
-Future<void> showSessionFilesSheet(BuildContext context, ViewerSession session) {
+/// Lets files be dropped on the remote picture to send them. Disabled (and
+/// inert) unless the host granted `permissions.files` and the channel is up.
+class SessionFilesDropTarget extends StatelessWidget {
+  const SessionFilesDropTarget({super.key, required this.session, required this.child});
+
+  final ViewerSession session;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([session, session.filesListenable]),
+      builder: (context, _) {
+        final endpoint = session.files;
+        final enabled =
+            endpoint != null && (session.permissions?.files ?? false) && !session.isEnded;
+        return FileDropTarget(
+          enabled: enabled,
+          onFiles: (paths) {
+            if (endpoint != null) sendPathsWithFeedback(context, endpoint, paths);
+          },
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+/// Opens the panel for [session] as a dialog (wide screens, used for incoming
+/// sessions on the host) or a bottom sheet (phones, and the viewer's Files
+/// button there).
+Future<void> showSessionFilesPanel(BuildContext context, SessionBase session) {
+  final wide = MediaQuery.sizeOf(context).width >= 720;
+  if (wide) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox(
+          width: kFilesPanelWidth + 40,
+          height: 640,
+          child: SessionFilesPanel(session: session, onClose: () => Navigator.of(ctx).pop()),
+        ),
+      ),
+    );
+  }
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
     builder: (ctx) => SizedBox(
       height: MediaQuery.sizeOf(ctx).height * 0.8,
-      child: SessionFilesSlot.panelBuilder(ctx, session, () => Navigator.of(ctx).pop()),
+      child: SessionFilesPanel(session: session, onClose: () => Navigator.of(ctx).pop()),
     ),
   );
 }
+
+/// Whether the host user gets a Files button for [session]: the viewer must
+/// have been granted file access and the session must be up.
+bool hostCanShowFiles(HostSession session) =>
+    !session.isEnded &&
+    session.permissions.files &&
+    (session.phase == SessionPhase.active || session.phase == SessionPhase.reconnecting);

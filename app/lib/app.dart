@@ -19,6 +19,7 @@ import 'session/session_manager.dart';
 import 'l10n/framework_localizations.dart';
 import 'l10n/strings.dart';
 import 'ui/dialogs/prompt_host.dart';
+import 'ui/file_notice_toaster.dart';
 import 'update/ui/updated_toast.dart';
 import 'update/update_service.dart';
 import 'ui/shell.dart';
@@ -119,7 +120,10 @@ class _ThelxisAppState extends State<ThelxisApp> {
             localizationsDelegates: frameworkLocalizationsDelegates,
             builder: (context, child) => PromptHost(
               navigatorKey: _navigatorKey,
-              child: _DesktopSync(child: child ?? const SizedBox.shrink()),
+              child: FileNoticeToaster(
+                navigatorKey: _navigatorKey,
+                child: _DesktopSync(child: child ?? const SizedBox.shrink()),
+              ),
             ),
             home: const AppShell(),
           );

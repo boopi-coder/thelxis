@@ -122,7 +122,7 @@ class _SessionViewState extends State<SessionView> {
     if (_isDesktop) {
       setState(() => _filesOpen = !_filesOpen);
     } else {
-      showSessionFilesSheet(context, widget.session);
+      showSessionFilesPanel(context, widget.session);
     }
   }
 
@@ -161,10 +161,9 @@ class _SessionViewState extends State<SessionView> {
                   fit: StackFit.expand,
                   children: [
                     if (showSurface)
-                      SessionFilesSlot.dropWrapper(
-                        context,
-                        session,
-                        RemoteSurface(
+                      SessionFilesDropTarget(
+                        session: session,
+                        child: RemoteSurface(
                           session: session,
                           view: _view,
                           isDesktop: isDesktop,
@@ -244,7 +243,7 @@ class _SessionViewState extends State<SessionView> {
       top: 8,
       left: 0,
       // Centre the pill over the picture, not over the side panel.
-      right: _filesOpen && isDesktop ? 380.0 : 0.0,
+      right: _filesOpen && isDesktop ? kFilesPanelWidth : 0.0,
       child: SafeArea(
         child: Align(
           alignment: Alignment.topCenter,

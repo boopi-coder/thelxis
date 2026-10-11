@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io' show Directory;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' show RTCDataChannel;
 
+import '../files/files.dart';
 import '../net/peer_identity.dart';
 import 'link_stats.dart';
 
@@ -50,6 +52,50 @@ abstract class SessionBase extends ChangeNotifier {
 
   @protected
   set filesChannel(RTCDataChannel? channel) => _filesChannel.value = channel;
+
+  final ValueNotifier<FileTransferEndpoint?> _files = ValueNotifier(null);
+
+  /// File transfer for this session (PROTOCOL.md section 6.4), created the
+  /// moment the `files` channel exists; null before that and after the
+  /// session ends. Host side: it refuses everything until the viewer is
+  /// authorized and `permissions.files` is set.
+  FileTransferEndpoint? get files => _files.value;
+  ValueListenable<FileTransferEndpoint?> get filesListenable => _files;
+
+  /// Receives file-transfer events (received / sent / failed ...) for the
+  /// session manager's notifications.
+  void Function(SessionBase session, FileTransferEvent event)? onFileEvent;
+
+  /// Wraps [channel] in a [FileTransferEndpoint]. Call it synchronously when
+  /// the channel is created or handed over: frames that arrive earlier are
+  /// lost.
+  @protected
+  void attachFiles(
+    FileChannel channel, {
+    required bool isHost,
+    required bool Function() filesAllowed,
+    Future<Directory> Function()? incomingDir,
+  }) {
+    if (_files.value != null || isEnded) return;
+    _files.value = FileTransferEndpoint(
+      channel: channel,
+      isHost: isHost,
+      filesAllowed: filesAllowed,
+      incomingDir: incomingDir,
+      onEvent: (e) => onFileEvent?.call(this, e),
+    );
+    notifyListeners();
+  }
+
+  /// Stops transfers (partial downloads stay resumable) and closes the
+  /// channel.
+  @protected
+  Future<void> detachFiles() async {
+    final endpoint = _files.value;
+    _files.value = null;
+    filesChannel = null;
+    await endpoint?.dispose();
+  }
 
   /// Called once when the session ends, for history and cleanup.
   void Function(SessionBase session)? onEnded;
@@ -99,6 +145,7 @@ abstract class SessionBase extends ChangeNotifier {
   void dispose() {
     stats.dispose();
     _filesChannel.dispose();
+    _files.dispose();
     super.dispose();
   }
 }

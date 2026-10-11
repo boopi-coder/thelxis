@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:thelxis/core/identity.dart';
@@ -64,6 +65,9 @@ class HostRig {
       (p) async => ApprovalResult.denied;
   Object? captureError;
 
+  /// Where received files land (tests point it at a temp folder).
+  Future<Directory> Function()? incomingDir;
+
   /// Creates the fake capture stream for [d] and remembers it.
   Future<FakeStream> streamFor(HostDisplay d) async {
     final s = FakeStream('${d.id}-${streams.length}');
@@ -91,6 +95,7 @@ class HostRig {
         platform: platform,
         captures: CaptureRegistry(),
         requestApproval: (p) => approval(p),
+        incomingDir: incomingDir,
         onNotice: (t, m) => notices.add(t),
         startCapture: (d, all, {int fps = 30}) async {
           if (captureError != null) throw captureError!;

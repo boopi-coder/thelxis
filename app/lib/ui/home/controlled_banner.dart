@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../session/host_session.dart';
 import '../../session/session_manager.dart';
+import '../session/files_slot.dart';
 import '../theme.dart';
 import '../../l10n/strings.dart';
 
@@ -36,13 +37,21 @@ class ControlledBanner extends StatelessWidget {
                       Expanded(
                         child: Text(
                           live.any((x) => x.controlEnabled)
-                              ? s.t('banner.controlledBy', {'names': live.map((x) => x.peer.name).join(', ')})
-                              : s.t('banner.viewedBy', {'names': live.map((x) => x.peer.name).join(', ')}),
+                              ? s.t('banner.controlledBy', {
+                                  'names': live.map((x) => x.peer.name).join(', '),
+                                })
+                              : s.t('banner.viewedBy', {
+                                  'names': live.map((x) => x.peer.name).join(', '),
+                                }),
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.onErrorContainer),
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(color: scheme.onErrorContainer),
                         ),
                       ),
-                      if (live.length == 1 && live.first.permissions.control) _PauseControl(session: live.first),
+                      if (live.length == 1 && hostCanShowFiles(live.first))
+                        _FilesControl(session: live.first),
+                      if (live.length == 1 && live.first.permissions.control)
+                        _PauseControl(session: live.first),
                       FilledButton(
                         style: FilledButton.styleFrom(
                           backgroundColor: scheme.error,
@@ -77,6 +86,24 @@ class _PauseControl extends StatelessWidget {
           child: Text(on ? context.s.t('banner.pauseControl') : context.s.t('banner.allowControl')),
         );
       },
+    );
+  }
+}
+
+class _FilesControl extends StatelessWidget {
+  const _FilesControl({required this.session});
+
+  final HostSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return IconButton(
+      key: const ValueKey('banner-files'),
+      tooltip: context.s.t('toolbar.files'),
+      color: scheme.onErrorContainer,
+      icon: const Icon(Icons.folder_open_rounded),
+      onPressed: () => showSessionFilesPanel(context, session),
     );
   }
 }

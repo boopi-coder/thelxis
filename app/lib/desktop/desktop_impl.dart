@@ -10,6 +10,7 @@ import 'package:window_manager/window_manager.dart';
 import '../core/log.dart';
 import 'desktop_integration.dart';
 import 'dock_integration.dart';
+import 'mac_login_item.dart';
 
 const _log = Logger('desktop');
 
@@ -157,6 +158,13 @@ class DesktopImpl with WindowListener implements DesktopIntegration {
   }
 
   Future<void> _initAutostart(bool enabled) async {
+    if (Platform.isMacOS) {
+      // launch_at_startup has no macOS implementation here; a LaunchAgent
+      // plist does the job. Syncing also repairs one that points at an old
+      // location of the app.
+      await MacLoginItem().sync(enabled);
+      return;
+    }
     try {
       // Same name as the Windows installer's Run value, to avoid duplicates.
       // `--minimized` keeps a login start out of the user's way.
@@ -202,6 +210,10 @@ class DesktopImpl with WindowListener implements DesktopIntegration {
 
   @override
   Future<void> setLaunchAtStartup(bool enabled) async {
+    if (Platform.isMacOS) {
+      await MacLoginItem().sync(enabled);
+      return;
+    }
     try {
       if (enabled) {
         await launchAtStartup.enable();

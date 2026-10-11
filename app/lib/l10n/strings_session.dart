@@ -93,11 +93,10 @@ final Map<String, (String, String)> kSessionStrings = {
   'key.lock': ('Lock screen', 'Заблокировать экран'),
   'key.taskManager': ('Task Manager', 'Диспетчер задач'),
 
-  // --- files panel (placeholder until the file-transfer module is attached) ---
-  'files.title': ('Files', 'Файлы'),
-  'files.soon.title': ('File transfer', 'Передача файлов'),
-  'files.soon.body': (
-    'Drop files onto the remote screen, or browse the other device here.',
-    'Перетащите файлы на экран удалённого устройства или просмотрите его файлы здесь.',
+  // --- files panel ---
+  'files.unavailable': ('File transfer is not available yet', 'Передача файлов пока недоступна'),
+  'files.unavailable.hint': (
+    'The file channel opens right after the connection is authorized. Try again in a moment.',
+    'Канал файлов открывается сразу после авторизации подключения. Повторите через мгновение.',
   ),
 };

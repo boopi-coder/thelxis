@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +14,7 @@ import 'package:thelxis/core/log.dart';
 import 'package:thelxis/core/settings.dart';
 import 'package:thelxis/core/system_info.dart';
 import 'package:thelxis/desktop/desktop_integration.dart';
+import 'package:thelxis/files/files.dart';
 import 'package:thelxis/net/peer_identity.dart';
 import 'package:thelxis/session/session_manager.dart';
 import 'package:thelxis/session/viewer_session.dart';
@@ -28,10 +31,16 @@ class _Harness {
   late AppServices services;
   late ChannelPair pair;
   late ViewerSession session;
+  final FileChannelPair filesPair = FileChannelPair();
   final List<Map<String, dynamic>> input = [];
   final List<Map<String, dynamic>> control = [];
 
-  Future<void> setUp({String touchMode = 'touchpad', bool control_ = true, bool files = true}) async {
+  Future<void> setUp({
+    String touchMode = 'touchpad',
+    bool control_ = true,
+    bool files = true,
+    bool attachFiles = true,
+  }) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final identity = await Identity.fromSeed(List<int>.filled(32, 61));
@@ -55,6 +64,7 @@ class _Harness {
       ..debugInputTap = input.add
       ..debugControlTap = control.add
       ..debugFingerprints = () async => (local: 'sha-256 11:22', remote: 'sha-256 99:88');
+    if (attachFiles) session.debugAttachFiles(filesPair.a);
     session.debugReceiveControl({'t': 'hello', 'v': 2, 'methods': ['request'], 'nonce': 'n'});
     session.debugReceiveControl({
       't': 'auth_result',
@@ -69,6 +79,7 @@ class _Harness {
   Future<void> tearDown() async {
     await session.end('user');
     await pair.close();
+    await filesPair.close();
   }
 
   Widget app() => MultiProvider(
@@ -94,14 +105,19 @@ void main() {
 
   late _Harness h;
 
-  Future<void> desktopApp(WidgetTester tester, {Size size = const Size(1000, 700), bool files = true}) async {
+  Future<void> desktopApp(
+    WidgetTester tester, {
+    Size size = const Size(1000, 700),
+    bool files = true,
+    bool attachFiles = true,
+  }) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     h = _Harness();
-    await tester.runAsync(() => h.setUp(files: files));
+    await tester.runAsync(() => h.setUp(files: files, attachFiles: attachFiles));
     await tester.pumpWidget(h.app());
     await tester.pump(const Duration(milliseconds: 300));
     h.input.clear();
@@ -300,20 +316,65 @@ void main() {
       await tester.pump();
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
       await tester.pump(const Duration(seconds: 6)); // lets socket-close timers fire
+      // Closing the file channel needs one more round of real time.
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+      await tester.pump(const Duration(seconds: 6));
       expect(h.session.isEnded, isTrue);
       expect(find.text('Session ended.'), findsOneWidget);
       await finish(tester);
     });
 
-    testWidgets('the Files button opens the side panel (placeholder until the module attaches) and closes it', (tester) async {
+    testWidgets('the Files button opens the real file panel in the side sheet and closes it', (tester) async {
       await desktopApp(tester);
-      expect(find.text('File transfer'), findsNothing);
+      expect(find.byType(FileTransferPanel), findsNothing);
       await tester.tap(find.byTooltip('Files'));
       await tester.pumpAndSettle();
-      expect(find.text('File transfer'), findsOneWidget);
+      expect(find.byType(FileTransferPanel), findsOneWidget);
       await tester.tap(find.byTooltip('Close'));
       await tester.pumpAndSettle();
-      expect(find.text('File transfer'), findsNothing);
+      expect(find.byType(FileTransferPanel), findsNothing);
+      await finish(tester);
+    });
+
+    testWidgets('until the files channel is up the panel says so instead of showing a dead list', (tester) async {
+      await desktopApp(tester, attachFiles: false);
+      await tester.tap(find.byTooltip('Files'));
+      await tester.pumpAndSettle();
+      expect(find.byType(FileTransferPanel), findsNothing);
+      expect(find.text('File transfer is not available yet'), findsOneWidget);
+      // The channel arrives while the panel is open: it swaps in place.
+      h.session.debugAttachFiles(h.filesPair.a);
+      await tester.pumpAndSettle();
+      expect(find.byType(FileTransferPanel), findsOneWidget);
+      await finish(tester);
+    });
+
+    testWidgets('with the files permission the picture accepts drops and the toolbar offers Send', (tester) async {
+      await desktopApp(tester);
+      expect(tester.widget<FileDropTarget>(find.byType(FileDropTarget)).enabled, isTrue);
+      expect(find.byType(SendFilesMenuButton), findsOneWidget);
+      await finish(tester);
+    });
+
+    testWidgets('without the files permission nothing about files is reachable', (tester) async {
+      await desktopApp(tester, files: false);
+      expect(tester.widget<FileDropTarget>(find.byType(FileDropTarget)).enabled, isFalse);
+      expect(find.byType(SendFilesMenuButton), findsNothing);
+      await finish(tester);
+    });
+
+    testWidgets('a file dropped on the picture is queued for the host', (tester) async {
+      await desktopApp(tester);
+      final drop = tester.widget<FileDropTarget>(find.byType(FileDropTarget));
+      final dir = await tester.runAsync(() => Directory.systemTemp.createTemp('thelxis_drop_'));
+      addTearDown(() => dir!.delete(recursive: true));
+      final f = File('${dir!.path}/dropped.txt')..writeAsStringSync('x');
+      drop.onFiles([f.path]);
+      for (var i = 0; i < 100 && h.session.files!.transfers.isEmpty; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(h.session.files!.transfers.map((t) => t.name), contains('dropped.txt'));
       await finish(tester);
     });
 
@@ -358,14 +419,19 @@ void main() {
   });
 
   group('Android touch', () {
-    Future<void> touchApp(WidgetTester tester, {String mode = 'touchpad'}) async {
+    Future<void> touchApp(
+      WidgetTester tester, {
+      String mode = 'touchpad',
+      Size size = const Size(800, 600),
+      bool files = true,
+    }) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       addTearDown(() => debugDefaultTargetPlatformOverride = null);
-      tester.view.physicalSize = const Size(800, 600);
+      tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       h = _Harness();
-      await tester.runAsync(() => h.setUp(touchMode: mode));
+      await tester.runAsync(() => h.setUp(touchMode: mode, files: files));
       await tester.pumpWidget(h.app());
       await tester.pump(const Duration(milliseconds: 300));
       h.input.clear();
@@ -463,6 +529,40 @@ void main() {
       expect(md.single['x'] as double, greaterThan(0.1));
       expect(md.single['y'] as double, closeTo(0.5, 0.05));
       await finish(tester);
+    });
+
+    testWidgets('on a phone the Files button opens the panel as a bottom sheet and More offers Send files', (tester) async {
+      await touchApp(tester, size: const Size(400, 800));
+      await tester.tap(find.byTooltip('Files'));
+      await tester.pumpAndSettle();
+      expect(find.byType(FileTransferPanel), findsOneWidget);
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(FileTransferPanel), findsNothing);
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      expect(find.text('Send files…'), findsOneWidget);
+      expect(find.text('Send folder…'), findsOneWidget);
+      await tester.tapAt(const Offset(5, 5)); // dismiss the menu
+      await tester.pumpAndSettle();
+      debugDefaultTargetPlatformOverride = null;
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(h.tearDown);
+    });
+
+    testWidgets('on a phone without the files permission More has no Send entries and there is no Files button', (tester) async {
+      await touchApp(tester, size: const Size(400, 800), files: false);
+      expect(find.byTooltip('Files'), findsNothing);
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      expect(find.text('Send files…'), findsNothing);
+      expect(find.text('Send folder…'), findsNothing);
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      debugDefaultTargetPlatformOverride = null;
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(h.tearDown);
     });
 
     testWidgets('the keyboard button reveals the extra-keys row', (tester) async {

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Directory;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -8,6 +9,7 @@ import '../core/identity.dart';
 import '../core/log.dart';
 import '../core/settings.dart';
 import '../core/trusted_devices.dart';
+import '../files/files.dart';
 import '../l10n/strings.dart';
 import '../net/handshake.dart';
 import '../net/net_address.dart';
@@ -44,6 +46,7 @@ class HostEnv {
     required this.requestApproval,
     required this.onNotice,
     this.startCapture = ScreenCapture.start,
+    this.incomingDir,
   });
 
   final AppSettings settings;
@@ -52,6 +55,9 @@ class HostEnv {
   final HostCredentials credentials;
   final HostPlatform platform;
   final CaptureRegistry captures;
+
+  /// Where files sent by the viewer land; null means `<Downloads>/Thelxis`.
+  final Future<Directory> Function()? incomingDir;
 
   /// Starts capturing a display; replaceable in tests.
   final Future<MediaStream> Function(HostDisplay display, List<HostDisplay> all, {int fps})
@@ -108,6 +114,10 @@ class HostSession extends SessionBase {
   bool _remoteSet = false;
   bool _captureHeld = false;
   bool _sharing = false;
+
+  /// Set when `auth_result ok` goes out. The `files` channel opens before
+  /// authorization, so file access must stay shut until then.
+  bool _accessGranted = false;
   final List<RTCIceCandidate> _pendingCandidates = [];
 
   List<HostDisplay> _displays = const [];
@@ -140,6 +150,17 @@ class HostSession extends SessionBase {
   @visibleForTesting
   void debugReceiveInput(Map<String, dynamic> json) =>
       _onInputMessage(RTCDataChannelMessage(jsonEncode(json)));
+
+  /// Attaches file transfer to an in-memory channel (tests).
+  @visibleForTesting
+  void debugAttachFiles(FileChannel channel) => attachFiles(
+        channel,
+        isHost: true,
+        filesAllowed: _filesAllowed,
+        incomingDir: env.incomingDir,
+      );
+
+  bool _filesAllowed() => _accessGranted && _permissions.files && !_ended;
 
   /// Pretends the control channel opened (sends `hello`).
   @visibleForTesting
@@ -198,6 +219,13 @@ class HostSession extends SessionBase {
       _control = control;
       _inputChannel = input;
       filesChannel = files;
+      // Wrap synchronously: the viewer may send as soon as the channel opens.
+      attachFiles(
+        RtcFileChannel(files),
+        isHost: true,
+        filesAllowed: _filesAllowed,
+        incomingDir: env.incomingDir,
+      );
       control.onDataChannelState = _onControlState;
       control.onMessage = _onControlMessage;
       input.onMessage = _onInputMessage;
@@ -477,6 +505,7 @@ class HostSession extends SessionBase {
     }
     if (_ended) return;
     _send(AuthResultMessage.ok(_permissions, trusted: env.trusted.isTrusted(peer.key)));
+    _accessGranted = true;
     _sendDisplays();
     if (_permissions.clipboard) await _startClipboard();
     if (!_ended) setPhase(SessionPhase.active);
@@ -643,6 +672,7 @@ class HostSession extends SessionBase {
   Future<void> end([String reason = 'user']) async {
     if (_ended) return;
     _ended = true;
+    _accessGranted = false;
     _authTimer?.cancel();
     _restartTimer?.cancel();
     _failTimer?.cancel();
@@ -678,10 +708,8 @@ class HostSession extends SessionBase {
       await env.captures.release(env.platform);
     }
     _sharing = false;
-    final files = filesChannel;
-    filesChannel = null;
+    await detachFiles();
     try {
-      await files?.close();
       await _control?.close();
       await _inputChannel?.close();
       await _pc?.close();

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Directory;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../core/log.dart';
 import '../core/password_proof.dart';
 import '../core/settings.dart';
+import '../files/files.dart';
 import '../l10n/strings.dart';
 import '../net/net_address.dart';
 import '../net/signaling_channel.dart';
@@ -39,9 +41,12 @@ class AuthPrompt {
 
 /// Settings and identity facts the viewer needs.
 class ViewerEnv {
-  const ViewerEnv({required this.settings, required this.userName});
+  const ViewerEnv({required this.settings, required this.userName, this.incomingDir});
 
   final AppSettings settings;
+
+  /// Where files sent by the host land; null means `<Downloads>/Thelxis`.
+  final Future<Directory> Function()? incomingDir;
 
   /// Name sent with `request` (shown on the host as who is asking).
   final String userName;
@@ -119,6 +124,15 @@ class ViewerSession extends SessionBase {
   @visibleForTesting
   void debugReceiveControl(Map<String, dynamic> json) =>
       _onControlMessage(RTCDataChannelMessage(jsonEncode(json)));
+
+  /// Attaches file transfer to an in-memory channel (tests).
+  @visibleForTesting
+  void debugAttachFiles(FileChannel channel) => attachFiles(
+        channel,
+        isHost: false,
+        filesAllowed: () => true,
+        incomingDir: env.incomingDir,
+      );
 
   /// Pretends the renderer drew its first frame.
   @visibleForTesting
@@ -285,6 +299,14 @@ class ViewerSession extends SessionBase {
         _inputChannel = dc;
       case 'files':
         filesChannel = dc;
+        // Synchronously: frames arriving before the wrapper exists are lost.
+        // The host is the one that enforces permissions.files.
+        attachFiles(
+          RtcFileChannel(dc),
+          isHost: false,
+          filesAllowed: () => true,
+          incomingDir: env.incomingDir,
+        );
     }
   }
 
@@ -497,11 +519,9 @@ class ViewerSession extends SessionBase {
     await _signalSub?.cancel();
     // Let the last control message reach the wire before the channel closes.
     await Future<void>.delayed(const Duration(milliseconds: 80));
-    final files = filesChannel;
-    filesChannel = null;
+    await detachFiles();
     try {
       renderer.srcObject = null;
-      await files?.close();
       await _control?.close();
       await _inputChannel?.close();
       await _pc?.close();
