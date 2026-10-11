@@ -769,6 +769,8 @@ void main() {
   });
 }
 
+bool _firstScenarioDone = false;
+
 /// Runs [body] against a fresh host and viewer, prints the state when it
 /// fails, tears everything down and then checks that no timer was left behind.
 void e2e(
@@ -797,9 +799,17 @@ void e2e(
       }
     }, zoneSpecification: audit.specification);
     await Future<void>.delayed(const Duration(milliseconds: 300));
-    // Sockets and files left open would show up as extra descriptors.
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    print('open file descriptors: $fdsBefore before, ${_openFileDescriptors()} after');
+    // Sockets and files left open would show up as extra descriptors. libwebrtc
+    // closes its own sockets on its network thread, so give that a moment.
+    final allowed = fdsBefore + (_firstScenarioDone ? 0 : 6); // the first one loads the plugins' fixed set
+    final settle = Stopwatch()..start();
+    while (_openFileDescriptors() > allowed && settle.elapsed < const Duration(seconds: 5)) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    _firstScenarioDone = true;
+    final fdsAfter = _openFileDescriptors();
+    print('open file descriptors: $fdsBefore before, $fdsAfter after');
+    expect(fdsAfter, lessThanOrEqualTo(allowed), reason: 'sockets or files left open by the scenario');
     final leaks = audit.leaks();
     expect(leaks, isEmpty, reason: 'timers still running after the scenario ended (of ${audit.created} created)');
   }, timeout: const Timeout(Duration(seconds: 60)));

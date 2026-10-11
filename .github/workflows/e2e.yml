@@ -11,6 +11,11 @@ on:
     branches: [main, 'e2e/**']
   pull_request:
   workflow_dispatch:
+    inputs:
+      pulseaudio:
+        description: Start a PulseAudio null sink first (turn off to reproduce the crash without it)
+        type: boolean
+        default: true
   workflow_call:
 
 concurrency:
@@ -59,8 +64,9 @@ jobs:
 
       # The runner has no sound card; libwebrtc's audio device module wants a PulseAudio server to talk to.
       - name: Start a PulseAudio server with a null sink
+        if: inputs.pulseaudio != false
         run: |
-          sudo apt-get install -y --no-install-recommends pulseaudio gdb
+          sudo apt-get install -y --no-install-recommends pulseaudio
           export XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg"
           mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
           pulseaudio --start --exit-idle-time=-1 --daemonize=yes || true
@@ -82,7 +88,7 @@ jobs:
           for f in integration_test/*_test.dart; do
             echo "::group::$f"
             xvfb-run -a -s "-screen 0 1280x800x24" \
-              flutter test "$f" -d linux --reporter expanded -v 2>&1 | tee -a "$RUNNER_TEMP/e2e/test.log" || status=1
+              flutter test "$f" -d linux --reporter expanded 2>&1 | tee -a "$RUNNER_TEMP/e2e/test.log" || status=1
             pkill -f 'bundle/thelxis' || true
             echo "::endgroup::"
           done
@@ -94,6 +100,7 @@ jobs:
         if: failure()
         continue-on-error: true
         run: |
+          sudo apt-get install -y --no-install-recommends gdb >/dev/null || true
           echo "--- progress markers"; cat /tmp/e2e_progress.log 2>/dev/null || echo none
           echo "--- cores"; ls -la "$RUNNER_TEMP/cores" || true
           for c in "$RUNNER_TEMP"/cores/core.*; do
