@@ -33,6 +33,18 @@ accounts, no relay operated by anyone. Two devices connect directly; encryption 
 The embedded TURN only relays to the listener's own machine (never an open relay); it carries
 already-encrypted DTLS packets, so even this hop on the device itself sees only ciphertext until libwebrtc.
 
+## Product requirements (owner)
+
+- **File transfer** both ways: drag-and-drop onto the session, a remote file browser (download/upload), transfer
+  queue with progress/speed/ETA, SHA-256 verified; text clipboard sync both ways.
+- **Tray-resident** on Windows/macOS/Linux: closing the window hides to the tray (macOS: no Dock icon while
+  hidden), the listener keeps running; optional start at login, minimized.
+- **Mandatory "being controlled" badge** on the host: small frosted-glass always-on-top window in a screen corner
+  with the logo, who is connected and the elapsed time; cannot be hidden or disabled; Stop ends the session.
+- **Over-the-air updates** from GitHub Releases of `sibawal/thelxis`, verified by an Ed25519 release key embedded in
+  the app (PROTOCOL §10); installed only when no session is active.
+- **Beautiful, modern UI.**
+
 ## Components
 
 ```

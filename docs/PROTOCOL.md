@@ -105,8 +105,8 @@ X→Y {"t":"ping"}  /  {"t":"pong"}          every 20 s; close after 60 s of sil
   (it is a traversal aid for this session, never an open relay).
 
 ## 5. WebRTC session layout
-- Host creates the PeerConnection, adds **one `sendonly` video transceiver** (no track yet) and two data channels:
-  `"control"` (ordered, reliable) and `"input"` (ordered, reliable). Then the signed offer.
+- Host creates the PeerConnection, adds **one `sendonly` video transceiver** (no track yet) and three data channels:
+  `"control"`, `"input"` and `"files"` (all ordered, reliable). Then the signed offer.
 - **No video is attached until authorization succeeds** (§6.1). Then `sender.replaceTrack(screenTrack)`;
   switching displays = another `replaceTrack` (no renegotiation).
 - `iceConnectionState == disconnected` > 3 s → host does an ICE restart; `failed` > 20 s → session ends.
@@ -121,7 +121,7 @@ V→H {"t":"auth","method":"trusted"}                          host checks V.key
 V→H {"t":"auth","method":"password","proof":"<b64url>"}
 V→H {"t":"auth","method":"request","user":"Alice"}           host user gets an Accept/Deny prompt (30 s)
 H→V {"t":"auth_result","ok":true,"trusted":true|false,
-     "permissions":{"view":true,"control":true,"clipboard":true,"files":false,"audio":false}}
+     "permissions":{"view":true,"control":true,"clipboard":true,"files":true,"audio":false}}
 H→V {"t":"auth_result","ok":false,"reason":"bad_password"|"denied"|"locked"|"not_trusted"|"not_allowed","retry":true|false}
 ```
 - `methods` lists only what the host currently allows. A viewer that believes it is trusted tries `trusted`
@@ -168,6 +168,38 @@ Coordinates are normalized to the active display (0.0–1.0, origin top-left).
 ```
 The host tracks pressed keys/buttons and releases all of them when the session ends or control is revoked.
 
+### 6.4 Files (channel `files`)
+Text frames are JSON; binary frames are file data. The host enforces `permissions.files` for every request
+coming from the viewer (`fs_*`, `get`, viewer-initiated `put`); without it → `fs_err`/`reject` with `denied`.
+
+Remote browsing (viewer → host):
+```
+V→H {"t":"fs_roots","rid":1}
+H→V {"t":"fs_roots_r","rid":1,"items":[{"name":"Home","path":"/Users/bob"},{"name":"Desktop","path":"…"},
+                                         {"name":"Downloads","path":"…"},{"name":"C:\\","path":"C:\\"}]}
+V→H {"t":"fs_list","rid":2,"path":"/Users/bob/Documents"}
+H→V {"t":"fs_list_r","rid":2,"path":"…","items":[{"name":"a.pdf","dir":false,"size":1234,"mtime":1760000000}]}
+H→V {"t":"fs_err","rid":2,"code":"not_found"|"denied"|"io","message":"…"}
+```
+Transfers (either direction). `xid` is chosen by the side that starts the transfer: **odd = viewer, even = host**.
+```
+S→R {"t":"put","xid":7,"name":"report.pdf" | "folder/sub/file.txt","size":123,"mtime":1760000000,"dest":null|"<dir>"}
+V→H {"t":"get","xid":9,"path":"/Users/bob/Documents/a.pdf"}       → host answers with put(xid 9) or reject
+R→S {"t":"accept","xid":7,"offset":0}                              offset > 0 resumes an existing .part file
+R→S {"t":"reject","xid":7,"reason":"denied"|"exists"|"no_space"|"io"}
+S→R binary frame: [uint32 big-endian xid][payload ≤ 65 536 bytes]  — sequential, offsets implicit
+S→R {"t":"done","xid":7,"sha256":"<hex of the whole file>"}
+R→S {"t":"ok","xid":7}  |  {"t":"fail","xid":7,"reason":"hash"|"io"}
+X→Y {"t":"cancel","xid":7}
+```
+- `dest: null` → receiver's incoming folder (`<Downloads>/Thelxis`). A viewer browsing the host may set `dest` to a
+  directory it listed. Folders are sent as individual files whose `name` holds a relative path.
+- The receiver writes to `<name>.thelxis-part`, verifies size + SHA-256, then renames (adds ` (1)`, ` (2)`… on clash)
+  and restores `mtime`. **Name sanitization is mandatory**: reject absolute paths, drive letters, `..` segments,
+  NUL/control characters, and Windows-reserved names; never follow symlinks out of the destination.
+- One data stream per direction at a time (queue); the sender pauses while the channel's `bufferedAmount` > 1 MiB.
+- Clipboard (§6.2 `clipboard`) carries text in v0.1; images/file lists are v0.2.
+
 ## 7. LAN discovery (UDP 47102)
 ```
 viewer → 255.255.255.255:47102 and each interface broadcast:  {"t":"discover","v":2}
@@ -180,3 +212,26 @@ Viewers re-broadcast every 5 s while the Devices screen is visible; entries expi
 - Max frame 1 MiB; malformed JSON → close. Idle unauthenticated connection → close after 10 s.
 - `allow incoming` off → the listener, TURN and port mappings are all shut down.
 - Never log keys' private parts, passwords, proofs, TURN credentials, SDP, or clipboard contents.
+
+## 9. Session badge (host UI requirement)
+While ≥ 1 incoming session is active, the host shows a native always-on-top frosted-glass badge in a screen
+corner: Thelxis logo, viewer name(s), elapsed time, Stop button. It cannot be hidden or disabled; Stop ends the
+sessions. Where the OS allows, the badge window is excluded from screen capture (it is for the local user).
+
+## 10. Over-the-air updates
+The only non-peer endpoint the app ever contacts, and only if "Automatic updates" is enabled (default on).
+```
+GET https://github.com/sibawal/thelxis/releases/latest/download/update.json
+GET https://github.com/sibawal/thelxis/releases/latest/download/update.json.sig
+update.json = {"v":1,"version":"0.2.0","published":"2026-10-20T10:00:00Z",
+               "notes_url":"https://github.com/sibawal/thelxis/releases/tag/v0.2.0",
+               "assets":{"windows-x64":{"name":"…-setup.exe","url":"https://…","size":123,"sha256":"<hex>"},
+                         "macos-universal":{…dmg}, "linux-x64-deb":{…}, "linux-x64-tar":{…},
+                         "android-arm64-v8a":{…}, "android-armeabi-v7a":{…}, "android-x86_64":{…},
+                         "android-universal":{…}}}
+update.json.sig = base64url(Ed25519 signature over the exact bytes of update.json)
+```
+- Verify the signature with the public key in `app/lib/update/update_trust.dart` **before parsing**; then require
+  `version` > current (semver; pre-releases ignored), download the asset for this platform/ABI/install type, verify
+  size + SHA-256, install. Any mismatch → discard and report; never fall back to an unsigned path.
+- Never install while a session is active; defer until idle. Check 30 s after start and every 6 h.
