@@ -9,6 +9,8 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:thelxis/files/files.dart';
+import 'package:thelxis/net/net_address.dart';
+import 'package:thelxis/net/connect_target.dart';
 import 'package:thelxis/protocol/models.dart';
 import 'package:thelxis/session/hid.dart';
 import 'package:thelxis/session/link_stats.dart';
@@ -249,18 +251,22 @@ void main() {
     final host = await rig.authorize(viewer);
     const wait = Duration(seconds: 8);
 
-    rig.viewer.clipboard.text = 'from the viewer: привет';
-    await waitUntil(
-      () => rig.host.clipboard.text == 'from the viewer: привет',
-      timeout: wait,
-      what: 'viewer clipboard reaches the host',
-    );
-    rig.host.clipboard.text = 'from the host: 你好';
-    await waitUntil(
-      () => rig.viewer.clipboard.text == 'from the host: 你好',
-      timeout: wait,
-      what: 'host clipboard reaches the viewer',
-    );
+    for (var round = 1; round <= 3; round++) {
+      final fromViewer = 'round $round from the viewer: привет';
+      rig.viewer.clipboard.text = fromViewer;
+      await waitUntil(
+        () => rig.host.clipboard.text == fromViewer,
+        timeout: wait,
+        what: 'round $round: viewer clipboard reaches the host',
+      );
+      final fromHost = 'round $round from the host: 你好';
+      rig.host.clipboard.text = fromHost;
+      await waitUntil(
+        () => rig.viewer.clipboard.text == fromHost,
+        timeout: wait,
+        what: 'round $round: host clipboard reaches the viewer',
+      );
+    }
 
     // A large clipboard still fits one SCTP message.
     final big = 'x' * (150 * 1024);
@@ -269,12 +275,15 @@ void main() {
 
     // The receiving side must not echo what it was just given.
     await Future<void>.delayed(const Duration(seconds: 3));
-    String summary(Iterable<Map<String, dynamic>> msgs) =>
-        msgs.map((m) => '${(m['text'] as String).length}:${(m['text'] as String).substring(0, 8)}').toList().toString();
-    expect(rig.viewer.sent('clipboard').length, 2,
-        reason: 'viewer sent its two own changes only: ${summary(rig.viewer.sent('clipboard'))}');
-    expect(rig.host.sent('clipboard').length, 1,
-        reason: 'host sent its one own change only: ${summary(rig.host.sent('clipboard'))}');
+    String summary(Iterable<Map<String, dynamic>> msgs) => msgs
+        .map((m) => '${(m['text'] as String).length}:${(m['text'] as String).substring(0, 8)}')
+        .toList()
+        .toString();
+    final viewerSent = summary(rig.viewer.sent('clipboard'));
+    final hostSent = summary(rig.host.sent('clipboard'));
+    print('clipboard messages sent by the viewer: $viewerSent; by the host: $hostSent');
+    expect(rig.viewer.sent('clipboard').length, 4, reason: 'viewer sent its own four changes only: $viewerSent');
+    expect(rig.host.sent('clipboard').length, 3, reason: 'host sent its own three changes only: $hostSent');
 
     viewer.sendChat('hello from the viewer');
     await waitUntil(() => host.chatLog.contains('hello from the viewer'), what: 'chat reaches the host');
@@ -447,6 +456,64 @@ void main() {
     expect(rig.viewer.sentControl.where((m) => m['t'] == 'auth').last['method'], 'trusted');
     expect(rig.host.sent('auth_result').last['trusted'], isTrue);
   });
+
+  e2e('j) reverse connection: the controlled device dials out and offers control', (rig) async {
+    final hostSession = await rig.host.manager.offerControl(ConnectTarget(
+      id: rig.viewer.identity.id,
+      addresses: [NetAddress('127.0.0.1', rig.viewer.manager.listener.port)],
+    ));
+    await waitUntil(() => rig.viewer.manager.viewerSessions.isNotEmpty, what: 'the viewer side accepts the offer');
+    final viewer = rig.viewer.manager.viewerSessions.single;
+    await rig.bothActive(viewer);
+    expect(rig.viewer.prompts.asked<ReverseOfferPrompt>().single.peer.id, rig.host.identity.id);
+    expect(viewer.permissions, const Permissions());
+    expect(hostSession.sharing, isTrue);
+
+    final pc = viewer.debugPeerConnection!;
+    await waitUntilAsync(
+      () async => (await probeInboundVideo(pc)).decoding,
+      timeout: const Duration(seconds: 25),
+      what: 'video flows in reverse mode',
+    );
+    final inj = rig.host.injector;
+    await waitUntil(() {
+      viewer.encoder.mouseMove(0.3, 0.7);
+      return inj.all<InjectedMove>().isNotEmpty;
+    }, what: 'input flows in reverse mode');
+  }, viewerListens: true);
+
+  e2e('k) the session survives a dropped signaling connection and resumes it', (rig) async {
+    final viewer = await rig.dial();
+    final host = await rig.authorize(viewer);
+    final pc = viewer.debugPeerConnection!;
+    await waitUntilAsync(
+      () async => (await probeInboundVideo(pc)).decoding,
+      timeout: const Duration(seconds: 25),
+      what: 'video before the drop',
+    );
+
+    viewer.channel.debugDropSocket();
+    await waitUntil(() => viewer.signalingDetached, what: 'viewer notices the dropped socket');
+    expect(viewer.phase, SessionPhase.active, reason: 'media does not depend on signaling');
+    await waitUntil(
+      () => !viewer.signalingDetached && viewer.channel.isAttached && host.channel.isAttached,
+      timeout: const Duration(seconds: 20),
+      what: 'both ends have a signaling socket again',
+    );
+    expect(viewer.phase, SessionPhase.active);
+    expect(host.phase, SessionPhase.active);
+
+    final inj = rig.host.injector;
+    await waitUntil(() {
+      viewer.encoder.mouseMove(0.6, 0.4);
+      return inj.all<InjectedMove>().isNotEmpty;
+    }, what: 'input still flows after the resume');
+
+    // The resumed socket carries the farewell.
+    await viewer.end('user');
+    await waitUntil(() => host.isEnded, what: 'host session ends');
+    expect(host.endReason, 'remote');
+  });
 }
 
 /// Runs [body] against a fresh host and viewer, prints the state when it
@@ -455,11 +522,12 @@ void e2e(
   String name,
   Future<void> Function(E2ERig rig) body, {
   Permissions? hostPermissions,
+  bool viewerListens = false,
 }) {
   testWidgets(name, (tester) async {
     final audit = TimerAudit();
     await runZoned(() async {
-      final rig = await E2ERig.start(hostPermissions: hostPermissions);
+      final rig = await E2ERig.start(hostPermissions: hostPermissions, viewerListens: viewerListens);
       try {
         await body(rig);
       } catch (_) {

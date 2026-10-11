@@ -294,9 +294,9 @@ class E2ERig {
   final E2ENode host;
   final E2ENode viewer;
 
-  static Future<E2ERig> start({Permissions? hostPermissions}) async {
+  static Future<E2ERig> start({Permissions? hostPermissions, bool viewerListens = false}) async {
     final host = await E2ENode.create('Host', listening: true);
-    final viewer = await E2ENode.create('Viewer', listening: false);
+    final viewer = await E2ENode.create('Viewer', listening: viewerListens);
     if (hostPermissions != null) {
       await host.settings.setDefaultPermissions(hostPermissions);
     }

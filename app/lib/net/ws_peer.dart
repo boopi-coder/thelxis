@@ -27,7 +27,10 @@ class WsPeer {
     _sub = _socket.listen(
       _onData,
       onDone: _onDone,
-      onError: (Object e) => _fail('socket error'),
+      onError: (Object e) {
+        _fail('socket error');
+        _finish();
+      },
       cancelOnError: true,
     );
   }
@@ -41,6 +44,10 @@ class WsPeer {
   void Function(SignalingMessage message)? _handler;
   void Function()? _onClose;
   bool _closed = false;
+
+  /// Completes when the stream is over: the peer's close frame arrived (or the
+  /// socket failed).
+  final Completer<void> _finished = Completer<void>();
 
   DateTime lastActivity = DateTime.now();
 
@@ -90,11 +97,13 @@ class WsPeer {
     if (_closed) return;
     _closed = true;
     _wake();
-    // The subscription stays until the close handshake is over: dart:io only
-    // sees the peer's close frame through it, and without that frame it keeps
-    // a five second timer alive and holds the socket for as long.
+    // `close()` only says our own close frame is out. The subscription must
+    // stay until the peer's close frame has come in through it: cancelling
+    // earlier hides that frame from dart:io, which then keeps the socket and a
+    // five second timer alive.
     try {
       await _socket.close(code, reason).timeout(const Duration(seconds: 2));
+      await _finished.future.timeout(const Duration(seconds: 2));
     } on Object {
       // The peer may already be gone; nothing to clean up.
     }
@@ -140,8 +149,13 @@ class WsPeer {
 
   void _onDone() {
     _closed = true;
+    _finish();
     _wake();
     _notifyClosed();
+  }
+
+  void _finish() {
+    if (!_finished.isCompleted) _finished.complete();
   }
 
   void _fail(String why) {
