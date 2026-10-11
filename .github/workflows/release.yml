@@ -23,7 +23,7 @@ permissions:
 jobs:
   prepare:
     name: Resolve version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       tag: ${{ steps.v.outputs.tag }}
@@ -63,13 +63,16 @@ jobs:
   publish:
     name: Publish GitHub Release
     needs: [prepare, build]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: write
     env:
       TAG: ${{ needs.prepare.outputs.tag }}
       VERSION: ${{ needs.prepare.outputs.version }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+      # Trust anchor the app ships with (app/lib/update/update_trust.dart). The signing secret must match it.
+      UPDATE_PUBLIC_KEY: CCI7L8D_i2lGhmSZvtjKdTP76EbtWRipgrIw3_Cdgvk
     steps:
       - uses: actions/checkout@v7
 
@@ -78,6 +81,51 @@ jobs:
           pattern: app-*
           merge-multiple: true
           path: dist
+
+      # --- signed update manifest (stable releases only: `releases/latest` never points at a pre-release)
+      - name: Check the app trusts the manifest key
+        if: env.PRERELEASE == 'false'
+        run: |
+          set -euo pipefail
+          if ! grep -Fq "'$UPDATE_PUBLIC_KEY'" app/lib/update/update_trust.dart; then
+            echo "::error file=app/lib/update/update_trust.dart::publicKey in the app differs from UPDATE_PUBLIC_KEY in release.yml; installed apps would reject this release's updates"
+            exit 1
+          fi
+
+      - name: Install signing tools
+        if: env.PRERELEASE == 'false'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet 'cryptography>=42'
+
+      - name: Create and sign update.json
+        if: env.PRERELEASE == 'false'
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$UPDATE_SIGNING_KEY" ]; then
+            echo "::error::UPDATE_SIGNING_KEY secret is not set; refusing to publish a stable release without a signed update manifest"
+            exit 1
+          fi
+          py="$RUNNER_TEMP/venv/bin/python"
+          "$py" packaging/sign_update.py manifest \
+            --version "$VERSION" --tag "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --dist dist --out dist/update.json
+          "$py" packaging/sign_update.py sign \
+            --manifest dist/update.json --out dist/update.json.sig \
+            --public-key "$UPDATE_PUBLIC_KEY"
+
+      - name: Verify update.json signature
+        if: env.PRERELEASE == 'false'
+        run: |
+          set -euo pipefail
+          # Re-check from scratch with only the public key: signature over the exact bytes, plus
+          # name/size/sha256 of every asset against the files about to be uploaded.
+          "$RUNNER_TEMP/venv/bin/python" packaging/sign_update.py verify \
+            --manifest dist/update.json --sig dist/update.json.sig \
+            --public-key "$UPDATE_PUBLIC_KEY" --dist dist --version "$VERSION"
+          cat dist/update.json
 
       - name: Checksums and release notes
         run: |
@@ -90,6 +138,8 @@ jobs:
           cd ..
           sed -e "s/{{VERSION}}/$VERSION/g" -e "s/{{TAG}}/$TAG/g" packaging/RELEASE_NOTES.md > "$RUNNER_TEMP/release-notes.md"
 
+      # Uploaded as a draft and published only after every asset is in place, so nobody (including the
+      # in-app updater polling releases/latest) can see a release whose files are still uploading.
       - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
@@ -97,6 +147,32 @@ jobs:
           target_commitish: ${{ github.sha }}
           body_path: ${{ runner.temp }}/release-notes.md
           generate_release_notes: true
+          draft: true
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
           fail_on_unmatched_files: true
           files: dist/*
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$PRERELEASE" = "true" ]; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
+          else
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          fi
+
+      # The exact path the app polls. Informational: a private repository or CDN lag must not fail a finished release.
+      - name: Smoke-test the published manifest
+        if: env.PRERELEASE == 'false'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/live"
+          base="https://github.com/$GITHUB_REPOSITORY/releases/latest/download"
+          curl -fsSL --retry 6 --retry-delay 10 --retry-all-errors -o "$RUNNER_TEMP/live/update.json" "$base/update.json"
+          curl -fsSL --retry 6 --retry-delay 10 --retry-all-errors -o "$RUNNER_TEMP/live/update.json.sig" "$base/update.json.sig"
+          "$RUNNER_TEMP/venv/bin/python" packaging/sign_update.py verify \
+            --manifest "$RUNNER_TEMP/live/update.json" --sig "$RUNNER_TEMP/live/update.json.sig" \
+            --public-key "$UPDATE_PUBLIC_KEY" --version "$VERSION"

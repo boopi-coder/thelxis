@@ -4,6 +4,10 @@
 ;   ISCC /DMyAppVersion=0.1.0 /DMyAppVersionInfo=0.1.0.0 /DSourceDir=<Flutter Release dir>
 ;        /DOutputDir=<dir> /DOutputBaseFilename=Thelxis-0.1.0-windows-x64-setup thelxis.iss
 ; Every define has a default so the script also compiles by hand after `flutter build windows`.
+;
+; Silent self-update (what the in-app updater runs):
+;   Thelxis-<ver>-windows-x64-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /RELAUNCH
+; /RELAUNCH is our own switch: once the install finished, start the new thelxis.exe with --updated.
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
@@ -61,7 +65,10 @@ ArchitecturesInstallIn64BitMode={#ArchAllowed}
 MinVersion=10.0
 ; Admin is required for Program Files and for the Windows Firewall rules below.
 PrivilegesRequired=admin
-CloseApplications=yes
+; Name of the single-instance mutex created in app/windows/runner/main.cpp. Setup refuses to run (or waits)
+; while the app is open; the in-app updater exits the app right after starting Setup.
+AppMutex=Local\io.thelxis.app.single-instance
+CloseApplications=force
 RestartApplications=no
 
 [Languages]
@@ -91,7 +98,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Registry]
 ; Same per-user Run key the app's own "Start with Windows" switch uses (value name "Thelxis").
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: autostart
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppExeName}"" --minimized"; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
 ; Inbound Windows Firewall rules, scoped to thelxis.exe. Ports: 47100/tcp signaling, 47101/tcp TURN over TCP,
@@ -100,7 +107,10 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Thelxis UDP"""; Flags: runhidden; StatusMsg: "Configuring Windows Firewall..."
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Thelxis TCP"" dir=in action=allow enable=yes profile=any protocol=TCP localport=47100-47101 program=""{app}\{#MyAppExeName}"""; Flags: runhidden; StatusMsg: "Configuring Windows Firewall..."
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Thelxis UDP"" dir=in action=allow enable=yes profile=any protocol=UDP localport=47100,47102 program=""{app}\{#MyAppExeName}"""; Flags: runhidden; StatusMsg: "Configuring Windows Firewall..."
+; Interactive install: the usual "Launch Thelxis" checkbox on the last page.
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
+; Silent self-update (/RELAUNCH): start the new version as the logged-in user (not elevated), no checkbox involved.
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--updated"; Flags: nowait runasoriginaluser; Check: RelaunchRequested
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#MyAppExeName}"; Flags: runhidden; RunOnceId: "StopThelxis"
@@ -108,6 +118,19 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Thelxis UDP"""; Flags: runhidden; RunOnceId: "DelFirewallUdp"
 
 [Code]
+function RelaunchRequested: Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), '/RELAUNCH') = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   // Also drop the Run entry when it was created by the app's own startup switch rather than by this installer.

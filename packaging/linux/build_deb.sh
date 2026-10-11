@@ -25,11 +25,20 @@ icon="$here/thelxis.png"
 [ -x "$bundle/thelxis" ] || { echo "error: $bundle/thelxis is missing or not executable" >&2; exit 1; }
 [ -f "$icon" ] || { echo "error: icon $icon not found" >&2; exit 1; }
 
-deb_version="${version//-/~}"
-case "$deb_version" in
-  [0-9]*) ;;
-  *) echo "error: version '$version' must start with a digit" >&2; exit 1 ;;
-esac
+# Debian sorts "0.2.0~rc.1" before "0.2.0", so a pre-release "-" becomes "~". The tilde lives in a variable
+# because a literal "~" in a ${var//-/~} replacement is tilde-expanded to $HOME by newer bash versions.
+version_re='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
+if ! [[ "$version" =~ $version_re ]]; then
+  echo "error: version '$version' must look like 1.2.3 or 1.2.3-rc.1" >&2
+  exit 1
+fi
+tilde='~'
+deb_version="${version//-/$tilde}"
+deb_version_re='^[0-9]+\.[0-9]+\.[0-9]+(~[0-9A-Za-z.]+)?$'
+if ! [[ "$deb_version" =~ $deb_version_re ]]; then
+  echo "error: computed Debian version '$deb_version' is invalid" >&2
+  exit 1
+fi
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT

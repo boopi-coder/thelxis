@@ -35,7 +35,8 @@ Thelxis — удалённый рабочий стол «компьютер — 
    Альтернатива: `xattr -dr com.apple.quarantine /Applications/Thelxis.app`.
 3. Выдайте разрешения в **Системные настройки -> Конфиденциальность и безопасность**:
    **Запись экрана** (чтобы показывать свой экран) и **Универсальный доступ** (чтобы управлять мышью и клавиатурой).
-   После выдачи разрешений перезапустите приложение.
+   После выдачи разрешений перезапустите приложение. Приложение подписано постоянным сертификатом Thelxis, поэтому
+   эти разрешения сохраняются при обновлениях.
 
 ### Linux
 - `.deb` (Debian, Ubuntu и производные): `sudo apt install ./thelxis_{{VERSION}}_amd64.deb`, затем запустите
@@ -103,7 +104,8 @@ These builds are not signed with a developer certificate, so your OS warns you o
    open **System Settings -> Privacy & Security** and click **Open Anyway**. Alternative:
    `xattr -dr com.apple.quarantine /Applications/Thelxis.app`.
 3. Grant permissions in **System Settings -> Privacy & Security**: **Screen Recording** (to share your screen) and
-   **Accessibility** (to let a remote person use your mouse and keyboard). Restart the app after granting.
+   **Accessibility** (to let a remote person use your mouse and keyboard). Restart the app after granting. The app is
+   signed with a stable Thelxis certificate, so these permissions survive updates.
 
 ### Linux
 - `.deb` (Debian, Ubuntu and derivatives): `sudo apt install ./thelxis_{{VERSION}}_amd64.deb`, then start

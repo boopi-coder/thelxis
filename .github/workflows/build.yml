@@ -24,6 +24,12 @@ on:
         required: false
       ANDROID_KEY_PASSWORD:
         required: false
+      MACOS_CERT_P12_BASE64:
+        description: Base64 of the stable self-signed macOS code-signing identity (.p12)
+        required: false
+      MACOS_CERT_PASSWORD:
+        description: Password of that .p12
+        required: false
 
 permissions:
   contents: read
@@ -37,13 +43,22 @@ jobs:
   # ---------------------------------------------------------------- static checks
   app-check:
     name: App analyze and test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
       run:
         working-directory: app
     steps:
       - uses: actions/checkout@v7
+
+      # tray_manager pulls in package:cnativeapi, whose native-asset build hook also runs under
+      # `flutter test` and needs a C++ toolchain plus GTK 3, X11 and Xi (found with pkg-config).
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev libx11-dev libxi-dev
 
       - uses: subosito/flutter-action@v2
         with:
@@ -63,7 +78,7 @@ jobs:
   # --------------------------------------------------------------------- Android
   android:
     name: Android APKs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
       run:
@@ -305,7 +320,34 @@ jobs:
           fi
           echo "All Mach-O files contain arm64 and x86_64."
 
-      - name: Ad-hoc sign and create dmg
+      # A stable (self-signed) certificate keeps the app's designated requirement identical across releases, so
+      # macOS keeps the Screen Recording / Accessibility grants after an update. Ad-hoc signatures change with
+      # every build, which resets those grants.
+      - name: Import signing certificate
+        id: codesign
+        env:
+          CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$CERT_P12_BASE64" ] || [ -z "$CERT_PASSWORD" ]; then
+            echo "identity=-" >> "$GITHUB_OUTPUT"
+            if [ "$RELEASE" = "true" ]; then
+              echo "::warning title=macOS app is ad-hoc signed::MACOS_CERT_* secrets are not set, so users will have to re-grant Screen Recording and Accessibility after every update."
+            else
+              echo "No signing certificate configured; the app will be ad-hoc signed."
+            fi
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/thelxis-signing.keychain-db"
+          # Record the keychain first so the cleanup step runs even if the import fails half-way.
+          echo "keychain=$keychain" >> "$GITHUB_OUTPUT"
+          identity="$("$GITHUB_WORKSPACE/packaging/macos/import_cert.sh" "$keychain")"
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+
+      - name: Sign app and create dmg
+        env:
+          CODESIGN_IDENTITY: ${{ steps.codesign.outputs.identity }}
         run: |
           set -euo pipefail
           app="$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' -print -quit)"
@@ -316,10 +358,8 @@ jobs:
           # Whatever Xcode named the product, ship it as Thelxis.app.
           ditto "$app" "$stage/Thelxis.app"
 
-          # No Developer ID certificate: ad-hoc signature (keeps entitlements) so the bundle is at least
-          # internally consistent; users still go through Gatekeeper's "Open Anyway".
-          codesign --force --deep --sign - --preserve-metadata=identifier,entitlements,flags "$stage/Thelxis.app"
-          codesign --verify --deep --strict --verbose=2 "$stage/Thelxis.app"
+          # Inside-out signing with the app's own entitlements (App Sandbox off); prints the designated requirement.
+          "$GITHUB_WORKSPACE/packaging/macos/sign_app.sh" "$stage/Thelxis.app" macos/Runner/Release.entitlements
 
           ln -s /Applications "$stage/Applications"
 
@@ -334,6 +374,12 @@ jobs:
             sleep 10
           done
           ls -lh "$dmg"
+
+      - name: Remove signing keychain
+        if: always() && steps.codesign.outputs.keychain != ''
+        env:
+          KEYCHAIN: ${{ steps.codesign.outputs.keychain }}
+        run: '"$GITHUB_WORKSPACE/packaging/macos/remove_cert.sh" "$KEYCHAIN"'
 
       - uses: actions/upload-artifact@v7
         with:

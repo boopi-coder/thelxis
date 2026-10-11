@@ -21,8 +21,11 @@ permissions:
 
 jobs:
   build:
-    # No secrets are passed on purpose: CI builds are debug-signed throwaway artifacts.
+    # Secrets let CI builds use the same signing identities as releases (APKs update in place, the macOS app keeps
+    # its Screen Recording / Accessibility grants). GitHub does not expose secrets to pull requests from forks;
+    # the build then falls back to debug/ad-hoc signing.
     uses: ./.github/workflows/build.yml
     with:
       version: 0.0.0-dev.${{ github.run_number }}
       release: false
+    secrets: inherit
