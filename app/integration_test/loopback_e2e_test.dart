@@ -209,7 +209,8 @@ void main() {
     // Viewer -> host.
     await vf.sendFiles([up.path]);
     await vf.whenIdle().timeout(patience);
-    expect(vf.transfers.single.status, TransferStatus.completed, reason: '${vf.transfers.single.error}');
+    final sentUp = vf.transfers.singleWhere((t) => t.isSend);
+    expect(sentUp.status, TransferStatus.completed, reason: '${sentUp.error}');
     final landedUp = File('${rig.host.incoming.path}/upload.bin');
     expect(await landedUp.exists(), isTrue);
     expect(listEquals(await landedUp.readAsBytes(), upBytes), isTrue, reason: 'viewer -> host content');
@@ -217,7 +218,8 @@ void main() {
     // Host -> viewer.
     await hf.sendFiles([down.path]);
     await hf.whenIdle().timeout(patience);
-    expect(hf.transfers.single.status, TransferStatus.completed, reason: '${hf.transfers.single.error}');
+    final sentDown = hf.transfers.singleWhere((t) => t.isSend);
+    expect(sentDown.status, TransferStatus.completed, reason: '${sentDown.error}');
     final landedDown = File('${rig.viewer.incoming.path}/pushed.bin');
     expect(await landedDown.exists(), isTrue);
     expect(listEquals(await landedDown.readAsBytes(), downBytes), isTrue, reason: 'host -> viewer content');
@@ -267,8 +269,12 @@ void main() {
 
     // The receiving side must not echo what it was just given.
     await Future<void>.delayed(const Duration(seconds: 3));
-    expect(rig.viewer.sent('clipboard').length, 2, reason: 'viewer sent its two own changes only');
-    expect(rig.host.sent('clipboard').length, 1, reason: 'host sent its one own change only');
+    String summary(Iterable<Map<String, dynamic>> msgs) =>
+        msgs.map((m) => '${(m['text'] as String).length}:${(m['text'] as String).substring(0, 8)}').toList().toString();
+    expect(rig.viewer.sent('clipboard').length, 2,
+        reason: 'viewer sent its two own changes only: ${summary(rig.viewer.sent('clipboard'))}');
+    expect(rig.host.sent('clipboard').length, 1,
+        reason: 'host sent its one own change only: ${summary(rig.host.sent('clipboard'))}');
 
     viewer.sendChat('hello from the viewer');
     await waitUntil(() => host.chatLog.contains('hello from the viewer'), what: 'chat reaches the host');

@@ -5,10 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:integration_test/integration_test.dart';
 
-/// Environment probe: proves the runner can run libwebrtc at all (native library
-/// loads, ICE/DTLS/SCTP work over the host network, the X11 capturer sees the
-/// virtual display) before any Thelxis code is involved. When this fails the
-/// problem is the runner or the plugin, not the application.
 /// The flutter tool drops the app's stdout, so a native crash leaves no trace.
 /// Progress goes to a file that the workflow prints when the run fails.
 void mark(String step) {
@@ -19,6 +15,10 @@ void mark(String step) {
   );
 }
 
+/// Environment probe: proves the runner can run libwebrtc at all (native library
+/// loads, ICE/DTLS/SCTP work over the host network, the X11 capturer sees the
+/// virtual display) before any Thelxis code is involved. When this fails the
+/// problem is the runner or the plugin, not the application.
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   mark('main');

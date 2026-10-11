@@ -90,16 +90,20 @@ class WsPeer {
     if (_closed) return;
     _closed = true;
     _wake();
-    unawaited(_sub.cancel());
+    // The subscription stays until the close handshake is over: dart:io only
+    // sees the peer's close frame through it, and without that frame it keeps
+    // a five second timer alive and holds the socket for as long.
     try {
       await _socket.close(code, reason).timeout(const Duration(seconds: 2));
     } on Object {
       // The peer may already be gone; nothing to clean up.
     }
+    unawaited(_sub.cancel());
     _notifyClosed();
   }
 
   void _onData(dynamic data) {
+    if (_closed) return;
     lastActivity = DateTime.now();
     if (data is! String) {
       _fail('binary frame');
