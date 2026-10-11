@@ -1,0 +1,412 @@
+name: Build
+
+# Reusable build pipeline: analyze/test the app and produce every distributable.
+# Called by ci.yml (dev builds) and release.yml (tagged releases).
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version without a leading "v", e.g. 0.1.0, 0.2.0-rc.1 or 0.0.0-dev.42'
+        type: string
+        required: true
+      release:
+        description: Building for a published release (unsigned Android output is then flagged loudly)
+        type: boolean
+        default: false
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        description: Base64 of the release .jks keystore
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.47.7'
+  VERSION: ${{ inputs.version }}
+  RELEASE: ${{ inputs.release }}
+
+jobs:
+  # ---------------------------------------------------------------- static checks
+  app-check:
+    name: App analyze and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+  # --------------------------------------------------------------------- Android
+  android:
+    name: Android APKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+
+      # AGP 9.x and Gradle 9.x both require JDK 17 or newer.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Restore release signing key
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            if [ "$RELEASE" = "true" ]; then
+              echo "::warning title=Android APKs are debug-signed::ANDROID_KEYSTORE_* secrets are not set, so this release is signed with the debug key and cannot be updated in place by later releases."
+            else
+              echo "No release keystore configured; APKs will be debug-signed."
+            fi
+            exit 0
+          fi
+
+          # Absolute path: works whether Gradle resolves storeFile against app/android or app/android/app.
+          keystore="$GITHUB_WORKSPACE/app/android/app/release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+
+          # .properties files treat backslashes as escapes.
+          esc() { printf '%s' "${1//\\/\\\\}"; }
+          umask 077
+          {
+            printf 'storePassword=%s\n' "$(esc "$KEYSTORE_PASSWORD")"
+            printf 'keyPassword=%s\n' "$(esc "$KEY_PASSWORD")"
+            printf 'keyAlias=%s\n' "$(esc "$KEY_ALIAS")"
+            printf 'storeFile=%s\n' "$(esc "$keystore")"
+          } > "$GITHUB_WORKSPACE/app/android/key.properties"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Build split-per-ABI APKs
+        run: flutter build apk --release --split-per-abi --build-name="$VERSION" --build-number="$GITHUB_RUN_NUMBER"
+
+      - name: Collect split APKs
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          for abi in armeabi-v7a arm64-v8a x86_64; do
+            cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "$GITHUB_WORKSPACE/dist/Thelxis-$VERSION-android-$abi.apk"
+          done
+
+      - name: Build universal APK
+        run: flutter build apk --release --build-name="$VERSION" --build-number="$GITHUB_RUN_NUMBER"
+
+      - name: Collect universal APK
+        run: cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/dist/Thelxis-$VERSION-android-universal.apk"
+
+      - name: Verify APK signatures
+        if: steps.signing.outputs.signed == 'true'
+        run: |
+          set -euo pipefail
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          for apk in "$GITHUB_WORKSPACE"/dist/*.apk; do
+            echo "== $apk"
+            "$build_tools/apksigner" verify --print-certs "$apk" | grep -E 'Signer #1 certificate (DN|SHA-256)'
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-android
+          path: dist/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  # --------------------------------------------------------------------- Windows
+  windows:
+    name: Windows zip and installer
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        working-directory: app
+        run: |
+          flutter pub get
+          if ($LASTEXITCODE -ne 0) { throw 'flutter pub get failed' }
+
+      - name: Build
+        working-directory: app
+        run: |
+          # The Windows resource file needs a purely numeric x.y.z; drop any pre-release suffix.
+          $core = ($env:VERSION -split '-')[0]
+          flutter build windows --release "--build-name=$core" "--build-number=$env:GITHUB_RUN_NUMBER"
+          if ($LASTEXITCODE -ne 0) { throw 'flutter build windows failed' }
+
+      - name: Bundle VC++ runtime
+        run: |
+          $rel = Join-Path $env:GITHUB_WORKSPACE 'app\build\windows\x64\runner\Release'
+          if (-not (Test-Path (Join-Path $rel 'thelxis.exe'))) { throw "thelxis.exe not found in $rel" }
+          # App-local runtime so the app starts on machines without the VC++ redistributable.
+          $sys32 = Join-Path $env:SystemRoot 'System32'
+          foreach ($dll in 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            Copy-Item (Join-Path $sys32 $dll) $rel -ErrorAction Stop
+          }
+          foreach ($dll in 'msvcp140_1.dll', 'msvcp140_2.dll', 'msvcp140_atomic_wait.dll', 'msvcp140_codecvt_ids.dll', 'concrt140.dll') {
+            $p = Join-Path $sys32 $dll
+            if (Test-Path $p) { Copy-Item $p $rel }
+          }
+
+      - name: Zip
+        run: |
+          $rel = Join-Path $env:GITHUB_WORKSPACE 'app\build\windows\x64\runner\Release'
+          $name = "Thelxis-$($env:VERSION)-windows-x64"
+          $stage = Join-Path $env:RUNNER_TEMP $name
+          $dist = Join-Path $env:GITHUB_WORKSPACE 'dist'
+          New-Item -ItemType Directory -Force $stage, $dist | Out-Null
+          Copy-Item (Join-Path $rel '*') $stage -Recurse
+          Compress-Archive -Path $stage -DestinationPath (Join-Path $dist "$name.zip") -CompressionLevel Optimal
+
+      - name: Installer (Inno Setup)
+        run: |
+          $iscc = $null
+          $cmd = Get-Command iscc -ErrorAction SilentlyContinue
+          if ($cmd) { $iscc = $cmd.Source }
+          if (-not $iscc) {
+            foreach ($dir in @("${env:ProgramFiles(x86)}\Inno Setup 6", "$env:ProgramFiles\Inno Setup 6")) {
+              if (Test-Path (Join-Path $dir 'ISCC.exe')) { $iscc = Join-Path $dir 'ISCC.exe'; break }
+            }
+          }
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'choco install innosetup failed' }
+            $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          }
+          Write-Host "Using $iscc"
+
+          $core = ($env:VERSION -split '-')[0]
+          $src = Join-Path $env:GITHUB_WORKSPACE 'app\build\windows\x64\runner\Release'
+          $dist = Join-Path $env:GITHUB_WORKSPACE 'dist'
+          & $iscc `
+            "/DMyAppVersion=$($env:VERSION)" `
+            "/DMyAppVersionInfo=$core.0" `
+            "/DSourceDir=$src" `
+            "/DOutputDir=$dist" `
+            "/DOutputBaseFilename=Thelxis-$($env:VERSION)-windows-x64-setup" `
+            (Join-Path $env:GITHUB_WORKSPACE 'packaging\windows\thelxis.iss')
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-windows
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ----------------------------------------------------------------------- macOS
+  macos:
+    name: macOS dmg
+    # Flutter release builds are universal (arm64 + x86_64) by default, so the free Apple Silicon
+    # runner is enough for Intel Macs too. The "Verify universal binary" step enforces that.
+    runs-on: macos-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          # CFBundleShortVersionString must be numeric; keep the pre-release suffix out of it.
+          core="${VERSION%%-*}"
+          flutter build macos --release --build-name="$core" --build-number="$GITHUB_RUN_NUMBER"
+
+      - name: Verify universal binary
+        run: |
+          set -euo pipefail
+          app="$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$app" || { echo "::error::no .app produced"; exit 1; }
+          echo "App bundle: $app"
+
+          exe_name="$(defaults read "$PWD/$app/Contents/Info" CFBundleExecutable)"
+          echo "Main executable architectures: $(lipo -archs "$app/Contents/MacOS/$exe_name")"
+
+          # Every Mach-O inside (main binary, frameworks, dylibs, helper tools) must carry both slices,
+          # otherwise the app would crash on launch on an Intel Mac.
+          bad=0
+          while IFS= read -r -d '' f; do
+            if file -b "$f" | grep -q 'Mach-O'; then
+              archs=" $(lipo -archs "$f" 2>/dev/null || true) "
+              case "$archs" in *" x86_64 "*) has_x86=1 ;; *) has_x86=0 ;; esac
+              case "$archs" in *" arm64 "*) has_arm=1 ;; *) has_arm=0 ;; esac
+              if [ "$has_x86" -eq 0 ] || [ "$has_arm" -eq 0 ]; then
+                echo "::error file=$f::missing an architecture slice (found:$archs)"
+                bad=1
+              fi
+            fi
+          done < <(find "$app" -type f -print0)
+          if [ "$bad" -ne 0 ]; then
+            echo "::error::build is not universal (needs arm64 + x86_64)"
+            exit 1
+          fi
+          echo "All Mach-O files contain arm64 and x86_64."
+
+      - name: Ad-hoc sign and create dmg
+        run: |
+          set -euo pipefail
+          app="$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' -print -quit)"
+          stage="$RUNNER_TEMP/dmg-stage"
+          rm -rf "$stage"
+          mkdir -p "$stage" "$GITHUB_WORKSPACE/dist"
+
+          # Whatever Xcode named the product, ship it as Thelxis.app.
+          ditto "$app" "$stage/Thelxis.app"
+
+          # No Developer ID certificate: ad-hoc signature (keeps entitlements) so the bundle is at least
+          # internally consistent; users still go through Gatekeeper's "Open Anyway".
+          codesign --force --deep --sign - --preserve-metadata=identifier,entitlements,flags "$stage/Thelxis.app"
+          codesign --verify --deep --strict --verbose=2 "$stage/Thelxis.app"
+
+          ln -s /Applications "$stage/Applications"
+
+          dmg="$GITHUB_WORKSPACE/dist/Thelxis-$VERSION-macos-universal.dmg"
+          # hdiutil sporadically fails with "Resource busy" on hosted runners.
+          for attempt in 1 2 3; do
+            if hdiutil create -volname "Thelxis" -srcfolder "$stage" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$dmg"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then echo "::error::hdiutil failed three times"; exit 1; fi
+            echo "hdiutil failed (attempt $attempt), retrying..."
+            sleep 10
+          done
+          ls -lh "$dmg"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-macos
+          path: dist/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+  # ----------------------------------------------------------------------- Linux
+  linux:
+    name: Linux tar.gz and deb
+    # Oldest hosted LTS image still offered: binaries link against its glibc, so they run on newer distros too.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+
+      # Flutter desktop toolchain; GTK 3, X11 and Xi (tray_manager / nativeapi build hook); libpulse (optional
+      # system-audio capture in flutter_webrtc). The remaining X11/DRM/ALSA dev packages are what the prebuilt
+      # libwebrtc.so links against, so the linker can resolve its dependencies.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            libx11-dev libxi-dev libpulse-dev \
+            libxtst-dev libxrandr-dev libxcomposite-dev libxdamage-dev libxfixes-dev libxext-dev libxrender-dev \
+            libasound2-dev libdrm-dev libgbm-dev
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          core="${VERSION%%-*}"
+          flutter build linux --release --build-name="$core" --build-number="$GITHUB_RUN_NUMBER"
+
+      - name: Package tar.gz
+        run: |
+          set -euo pipefail
+          bundle="build/linux/x64/release/bundle"
+          test -x "$bundle/thelxis"
+          name="Thelxis-$VERSION-linux-x64"
+          stage="$RUNNER_TEMP/$name"
+          rm -rf "$stage"
+          mkdir -p "$stage" "$GITHUB_WORKSPACE/dist"
+          cp -a "$bundle/." "$stage/"
+          tar -C "$RUNNER_TEMP" -czf "$GITHUB_WORKSPACE/dist/$name.tar.gz" "$name"
+
+      - name: Package deb
+        run: |
+          set -euo pipefail
+          # The desktop file is named after the GApplication id so GNOME/KDE can match windows to it.
+          app_id="$(sed -n 's/^set(APPLICATION_ID "\(.*\)")/\1/p' linux/CMakeLists.txt)"
+          test -n "$app_id" || { echo "::error::APPLICATION_ID not found in app/linux/CMakeLists.txt"; exit 1; }
+          "$GITHUB_WORKSPACE/packaging/linux/build_deb.sh" "$VERSION" build/linux/x64/release/bundle "$app_id" "$GITHUB_WORKSPACE/dist"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-linux
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+          if-no-files-found: error
+          retention-days: 14

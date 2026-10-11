@@ -1,0 +1,24 @@
+# Generated icons are committed; regenerate with packaging/icons/generate.sh
+# (it also redraws the source PNGs in assets/icon/ via packaging/icons/make_icons.py).
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+
+  android: "ic_launcher"
+  min_sdk_android: 24
+  adaptive_icon_background: "#3A2799"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  # The foreground is already drawn inside the 66% adaptive safe zone.
+  adaptive_icon_foreground_inset: 0
+  adaptive_icon_monochrome: "assets/icon/app_icon_monochrome.png"
+
+  ios: false
+
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    icon_size: 256
+
+  macos:
+    generate: true
+    # Apple-style tile with transparent margin and soft shadow.
+    image_path: "assets/icon/app_icon_macos.png"

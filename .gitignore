@@ -1,0 +1,33 @@
+# OS junk
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+*~
+*.swp
+
+# Editors / IDEs
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+
+# Secrets - never commit signing keys or environment files
+app/android/key.properties
+key.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+.env
+.env.*
+!.env.example
+
+# Build output
+/dist/
+/stage/
+app/build/
+
+# Local tooling
+__pycache__/
+*.pyc
