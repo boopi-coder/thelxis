@@ -142,7 +142,12 @@ void main() {
     await untilTrue(() => badge.shown.isNotEmpty);
     expect(badge.shown.last.label, 'Подключён: Alice');
     expect(badge.shown.last.stopLabel, 'Отключить');
-    final firstSince = badge.shown.last.since;
+    // The badge appears when capture starts (timer anchored at startedAt) and
+    // is re-anchored to activeSince once the session turns active. Wait for the
+    // settled state, otherwise the baseline depends on which of the two the
+    // poll happens to catch.
+    await untilTrue(() => a.session.activeSince != null && badge.shown.last.since == a.session.activeSince);
+    final firstSince = a.session.activeSince!;
 
     await Future<void>.delayed(const Duration(milliseconds: 20));
     final b = await connectViewer('Bob', seed: 41);
