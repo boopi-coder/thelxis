@@ -47,6 +47,8 @@
 - **Доверенные устройства** для доступа без присутствия (как `authorized_keys` в SSH), права по устройствам,
   адресная книга с заметками и тегами, ссылки-приглашения и QR.
 - **Платформы**: Windows, macOS (Apple Silicon и Intel), Linux (X11), Android (хост и зритель).
+- **Обновления**: приложение проверяет GitHub Releases (единственный запрос не к собеседнику) и ставит только
+  релизы с подписью Ed25519, ключ которой зашит в приложение; отключается в настройках.
 
 ### Как устанавливается соединение
 
@@ -166,6 +168,8 @@ its logo is a hypnotic spiral.
 - **Trusted devices** for unattended access (like SSH `authorized_keys`), per-device permissions, an address book
   with notes and tags, invite links and QR codes.
 - **Platforms**: Windows, macOS (Apple Silicon and Intel), Linux (X11), Android (host and viewer).
+- **Updates**: the app checks GitHub Releases (its only request that is not to your peer) and installs only releases
+  whose manifest carries a valid Ed25519 signature for the key built into the app; can be turned off in settings.
 
 ### How connections are made
 
@@ -253,3 +257,9 @@ packaging/    icons, Windows installer (Inno Setup), .deb builder, release notes
 - **v0.2** - Windows service / macOS LaunchDaemon for login-screen access, file transfer, chat UI, Wayland input,
   audio, optional decentralized address lookup (DHT, signed records) for dynamic IPs, auto-update.
 - **v0.3** - signed fleet policy files, local session recording, 2FA on the host, iOS viewer.
+
+---
+
+## Лицензия / License
+
+MIT — см. [LICENSE](LICENSE). / MIT — see [LICENSE](LICENSE).
