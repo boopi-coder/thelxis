@@ -735,6 +735,17 @@ void main() {
     }, what: 'input flows in reverse mode');
   }, viewerListens: true);
 
+  e2e('s) "stop all" arriving while a session is already ending waits for it', (rig) async {
+    final viewer = await rig.dial();
+    final host = await rig.authorize(viewer);
+    final ending = host.end('remote');
+    await rig.host.manager.endAll();
+    expect(host.isEnded, isTrue, reason: 'endAll must not return before the session is gone');
+    expect(host.endReason, 'remote');
+    await ending;
+    await waitUntil(() => viewer.isEnded, what: 'the viewer notices');
+  });
+
   e2e('r) the session survives a dropped signaling connection and resumes it', (rig) async {
     final viewer = await rig.dial();
     final host = await rig.authorize(viewer);

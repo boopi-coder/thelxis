@@ -261,6 +261,15 @@ void main() {
     });
   });
 
+  test('a second end() joins the one in flight, so awaiting it means the session has ended', () async {
+    final first = session.end('remote');
+    final second = session.end('user');
+    expect(identical(first, second), isTrue);
+    await second;
+    expect(session.isEnded, isTrue);
+    expect(session.endReason, 'remote', reason: 'the first reason wins');
+  });
+
   test('debug seams are visible for testing only', () {
     expect(session.debugControlTap, isNotNull);
     expect(kDebugMode, isTrue);

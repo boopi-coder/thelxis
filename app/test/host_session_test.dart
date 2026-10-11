@@ -152,6 +152,16 @@ void main() {
     expect(r.session.endReason, 'denied');
   });
 
+  test('a second end() joins the one in flight, so awaiting it means the session has ended', () async {
+    r.open();
+    final first = r.session.end('remote');
+    final second = r.session.end('user');
+    expect(identical(first, second), isTrue);
+    await second;
+    expect(r.session.isEnded, isTrue);
+    expect(r.session.endReason, 'remote', reason: 'the first reason wins');
+  });
+
   test('a trusted viewer connects without any prompt', () async {
     await r.trusted.add(key: r.viewerId.publicKeyB64, id: r.viewerId.id, name: 'Alice', permissions: const Permissions());
     r.approval = (p) async => fail('no prompt expected for a trusted device');

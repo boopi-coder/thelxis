@@ -521,9 +521,15 @@ class ViewerSession extends SessionBase {
 
   // --- teardown ----------------------------------------------------------
 
+  Future<void>? _ending;
+
+  /// Ends the session. A second call (the manager's "stop all" arriving while
+  /// the peer's bye is already being handled) waits for the first to finish
+  /// instead of returning early, so awaiting it always means "ended".
   @override
-  Future<void> end([String reason = 'user']) async {
-    if (_ended) return;
+  Future<void> end([String reason = 'user']) => _ending ??= _end(reason);
+
+  Future<void> _end(String reason) async {
     _ended = true;
     _poller?.stop();
     encoder
