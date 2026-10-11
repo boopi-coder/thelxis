@@ -468,7 +468,7 @@ void main() {
       expect(formatBitrate(2500000), '2.5 Mbps');
       expect(formatBitrate(640000), '640 kbps');
       expect(osLabel('macos'), 'macOS');
-      expect(osIcon('android'), Icons.phone_android_rounded);
+      expect(osIcon('android'), Icons.smartphone_outlined);
     });
   });
 }

@@ -39,17 +39,17 @@ void main() {
     await tester.pumpWidget(ThelxisApp(services: services));
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('YOUR THELXIS ID'), findsOneWidget);
+    expect(find.text('Your Thelxis ID'), findsOneWidget);
     expect(find.text(services.identity.formattedId), findsWidgets);
     expect(find.text('One-time password'), findsOneWidget);
     expect(find.text('••••••••'), findsOneWidget);
     expect(find.text('Allow incoming connections'), findsOneWidget);
     expect(find.text('Share access'), findsOneWidget);
     expect(find.text('Connect to a device'), findsOneWidget);
-    expect(find.byType(NavigationRail), findsOneWidget, reason: 'wide layout uses a rail');
+    expect(find.byKey(const ValueKey('sidebar')), findsOneWidget, reason: 'wide layout uses the sidebar');
     expect(find.byType(NavigationBar), findsNothing);
     // The unstarted listener is reported honestly.
-    expect(find.textContaining('Listener unavailable'), findsOneWidget);
+    expect(find.textContaining('Listener unavailable'), findsWidgets); // pill + sidebar status
 
     await tester.tap(find.byTooltip('Show'));
     await tester.pump();
@@ -67,28 +67,31 @@ void main() {
     await tester.pumpWidget(ThelxisApp(services: services));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(NavigationBar), findsOneWidget);
-    expect(find.byType(NavigationRail), findsNothing);
+    expect(find.byKey(const ValueKey('sidebar')), findsNothing);
 
-    await tester.tap(find.text('Devices'));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('ADDRESS BOOK'), findsOneWidget);
-    expect(find.text('ON THIS NETWORK'), findsOneWidget);
+    Future<void> openTab(String label) async {
+      // Pages carry same-named headings; the bar's label is the one to tap.
+      await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(label)));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 300));
+    }
 
-    await tester.tap(find.text('Sessions'));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('YOUR CONNECTIONS'), findsOneWidget);
+    await openTab('Devices');
+    expect(find.text('Address book'), findsOneWidget);
+    expect(find.text('On this network'), findsOneWidget);
 
-    await tester.tap(find.text('Settings'));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('SECURITY'), findsOneWidget);
-    expect(find.text('TRUSTED DEVICES'), findsOneWidget);
+    await openTab('Sessions');
+    expect(find.text('Your connections'), findsOneWidget);
+
+    await openTab('Settings');
+    expect(find.text('Security'), findsOneWidget);
+    expect(find.text('Trusted devices'), findsOneWidget);
     expect(find.text('No trusted devices'), findsOneWidget);
-    expect(find.text('CONNECTIVITY'), findsOneWidget);
+    expect(find.text('Connectivity'), findsOneWidget);
     expect(find.text('Use public STUN servers'), findsOneWidget);
 
-    await tester.tap(find.text('Home'));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('YOUR THELXIS ID'), findsOneWidget);
+    await openTab('Home');
+    expect(find.text('Your Thelxis ID'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 

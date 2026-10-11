@@ -1,9 +1,8 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../ui/theme.dart';
 import 'files_strings.dart';
 
 bool get _dropSupported {
@@ -21,7 +20,7 @@ bool get _dropSupported {
 }
 
 /// Lets the user drop files and folders onto [child] (desktop only; on other
-/// platforms this is just [child]). While a drag hovers, a frosted overlay
+/// platforms this is just [child]). While a drag hovers, a flat overlay
 /// says what will happen.
 ///
 /// Set [enabled] to false while something (a dialog, another page) covers the
@@ -68,105 +67,56 @@ class _FileDropTargetState extends State<FileDropTarget> {
         fit: StackFit.passthrough,
         children: [
           widget.child,
-          Positioned.fill(
-            child: IgnorePointer(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                child: _hovering && widget.enabled ? const DropOverlay(key: ValueKey('drop-overlay')) : const SizedBox.shrink(key: ValueKey('drop-idle')),
-              ),
-            ),
-          ),
+          if (_hovering && widget.enabled)
+            const Positioned.fill(child: IgnorePointer(child: DropOverlay(key: ValueKey('drop-overlay')))),
         ],
       ),
     );
   }
 }
 
-/// The frosted "Drop files to send" layer. Public so it can be previewed.
-class DropOverlay extends StatefulWidget {
+/// The "Drop files to send" layer: a translucent flat sheet with a dashed
+/// accent outline. Public so it can be previewed.
+class DropOverlay extends StatelessWidget {
   const DropOverlay({super.key});
 
   @override
-  State<DropOverlay> createState() => _DropOverlayState();
-}
-
-class _DropOverlayState extends State<DropOverlay> with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat(reverse: true);
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final c = context.c;
     final s = FilesStrings.of(context);
     final text = Theme.of(context).textTheme;
     return Semantics(
       liveRegion: true,
       label: s.dropTitle,
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-          child: DecoratedBox(
-            decoration: BoxDecoration(color: scheme.surface.withValues(alpha: 0.62)),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: CustomPaint(
-                painter: _DashedRRectPainter(color: scheme.primary.withValues(alpha: 0.85), radius: 28),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: scheme.primary.withValues(alpha: 0.07),
-                    borderRadius: BorderRadius.circular(28),
-                  ),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        AnimatedBuilder(
-                          animation: _pulse,
-                          builder: (context, child) {
-                            final t = Curves.easeInOut.transform(_pulse.value);
-                            return Container(
-                              width: 88 + 8 * t,
-                              height: 88 + 8 * t,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: scheme.primaryContainer,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: scheme.primary.withValues(alpha: 0.18 + 0.12 * t),
-                                    blurRadius: 24 + 16 * t,
-                                    spreadRadius: 2 + 4 * t,
-                                  ),
-                                ],
-                              ),
-                              child: Transform.translate(
-                                offset: Offset(0, -3 * t),
-                                child: Icon(Icons.upload_rounded, size: 44, color: scheme.onPrimaryContainer),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 22),
-                        Text(
-                          s.dropTitle,
-                          textAlign: TextAlign.center,
-                          style: text.headlineSmall?.copyWith(fontWeight: FontWeight.w700, color: scheme.onSurface),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          s.dropSubtitle,
-                          textAlign: TextAlign.center,
-                          style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
-                        ),
-                      ],
+      child: DecoratedBox(
+        decoration: BoxDecoration(color: c.surface.withValues(alpha: 0.88)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: CustomPaint(
+            painter: _DashedRRectPainter(color: c.accent, radius: Radii.card),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: c.accentSoft,
+                borderRadius: BorderRadius.circular(Radii.card),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.upload_rounded, size: 36, color: c.accent),
+                    const SizedBox(height: 12),
+                    Text(
+                      s.dropTitle,
+                      textAlign: TextAlign.center,
+                      style: text.titleMedium,
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    Text(
+                      s.dropSubtitle,
+                      textAlign: TextAlign.center,
+                      style: text.bodySmall?.copyWith(color: c.textSecondary),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -190,7 +140,7 @@ class _DashedRRectPainter extends CustomPainter {
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
+      ..strokeWidth = 1.5
       ..strokeCap = StrokeCap.round;
     const dash = 10.0;
     const gap = 8.0;

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:thelxis/core/log.dart';
 import 'package:thelxis/l10n/framework_localizations.dart';
 import 'package:thelxis/ui/theme.dart';
+import 'package:thelxis/ui/widgets/rows.dart';
 import 'package:thelxis/update/installers/installer.dart';
 import 'package:thelxis/update/ui/update_banner.dart';
 import 'package:thelxis/update/ui/update_settings_section.dart';
@@ -70,7 +71,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Version 0.2.0 is available'), findsOneWidget);
       expect(find.text('Update'), findsOneWidget);
-      expect(find.text('Skip'), findsOneWidget);
+      expect(find.byKey(const ValueKey('update-dismiss')), findsOneWidget, reason: 'the banner can be closed');
       expect(find.text("What's new"), findsOneWidget);
     });
 
@@ -82,16 +83,16 @@ void main() {
 
       expect(find.text('Доступна версия 0.2.0'), findsOneWidget);
       expect(find.text('Обновить'), findsOneWidget);
-      expect(find.text('Пропустить'), findsOneWidget);
+      expect(find.byTooltip('Скрыть'), findsOneWidget);
     });
 
-    testWidgets('Skip hides the banner and remembers the version', (tester) async {
+    testWidgets('closing the banner hides it and remembers the version', (tester) async {
       rig = await make(tester, prefsValues: _manual);
       await tester.pumpWidget(host(UpdateBanner(service: rig.service)));
       await run(tester, rig.service.checkNow);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Skip'));
+      await tester.tap(find.byKey(const ValueKey('update-dismiss')));
       await tester.pumpAndSettle();
       expect(find.text('Version 0.2.0 is available'), findsNothing);
       expect(rig.service.skippedVersion, '0.2.0');
@@ -237,8 +238,8 @@ void main() {
       expect(rig.prefs.getBool('update.autoCheck'), isFalse);
 
       // "Install automatically" is meaningless without automatic checks.
-      final installSwitch = tester.widget<SwitchListTile>(
-        find.widgetWithText(SwitchListTile, 'Install automatically'),
+      final installSwitch = tester.widget<SwitchRow>(
+        find.widgetWithText(SwitchRow, 'Install automatically'),
       );
       expect(installSwitch.onChanged, isNull);
     });
@@ -282,5 +283,37 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Thelxis was updated to version 0.2.0'), findsOneWidget);
     expect(find.text("What's new"), findsOneWidget);
+  });
+
+  group('the "updated" toast can always be dismissed', () {
+    Future<void> show(WidgetTester tester) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: buildTheme(Brightness.light),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(onPressed: () => showUpdatedToast(context, '0.2.0'), child: const Text('go')),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('go'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    testWidgets('it has a close button', (tester) async {
+      await show(tester);
+      expect(find.byIcon(Icons.close), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text('Thelxis was updated to version 0.2.0'), findsNothing);
+    });
+
+    testWidgets('and goes away by itself even though it carries an action', (tester) async {
+      await show(tester);
+      await tester.pump(const Duration(seconds: 9));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text('Thelxis was updated to version 0.2.0'), findsNothing);
+    });
   });
 }

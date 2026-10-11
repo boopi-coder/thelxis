@@ -1,24 +1,24 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../l10n/strings.dart';
 import '../theme.dart';
+import 'hover_tint.dart';
+import 'thelxis_logo.dart';
 
 IconData osIcon(String os) {
   switch (os) {
     case 'windows':
-      return Icons.window_rounded;
+      return Icons.desktop_windows_outlined;
     case 'macos':
     case 'ios':
-      return Icons.laptop_mac_rounded;
+      return Icons.laptop_mac_outlined;
     case 'linux':
-      return Icons.computer_rounded;
+      return Icons.computer_outlined;
     case 'android':
-      return Icons.phone_android_rounded;
+      return Icons.smartphone_outlined;
     default:
-      return Icons.devices_other_rounded;
+      return Icons.devices_other_outlined;
   }
 }
 
@@ -39,22 +39,33 @@ String osLabel(String os) {
   }
 }
 
-/// Copies [text] and confirms with a snackbar. [what] names the thing copied.
+/// Copies [text] and confirms with a toast. [what] names the thing copied.
 Future<void> copyToClipboard(BuildContext context, String text, String what) async {
   await Clipboard.setData(ClipboardData(text: text));
   if (!context.mounted) return;
   showMessage(context, context.s.t('common.copied', {'what': what}));
 }
 
+/// A short toast. Every toast has a close button (the theme turns it on) and
+/// goes away by itself.
 void showMessage(BuildContext context, String text) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 3)));
+    ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 4)));
 }
 
 enum PillTone { good, warn, bad, neutral }
 
-/// Small rounded status label with a coloured dot; colour changes animate.
+/// The solid colour of a status dot for [tone].
+Color toneDot(AppColors c, PillTone tone) => switch (tone) {
+      PillTone.good => c.online,
+      PillTone.warn => const Color(0xFFFF9F0A),
+      PillTone.bad => c.danger,
+      PillTone.neutral => c.textMuted,
+    };
+
+/// Small rounded status label with a dot. Soft tinted background, coloured
+/// text; no animation, so a status change never flashes.
 class StatusPill extends StatelessWidget {
   const StatusPill({
     super.key,
@@ -62,7 +73,6 @@ class StatusPill extends StatelessWidget {
     required this.tone,
     this.onTap,
     this.trailing,
-    this.onGradient = false,
   });
 
   final String label;
@@ -70,62 +80,51 @@ class StatusPill extends StatelessWidget {
   final VoidCallback? onTap;
   final Widget? trailing;
 
-  /// Draw for use on the violet hero gradient: white text, glass fill.
-  final bool onGradient;
-
   @override
   Widget build(BuildContext context) {
-    final s = context.status;
-    final scheme = Theme.of(context).colorScheme;
-    final color = switch (tone) {
-      PillTone.good => s.good,
-      PillTone.warn => s.warn,
-      PillTone.bad => s.bad,
-      PillTone.neutral => scheme.onSurfaceVariant,
+    final c = context.c;
+    final (fg, bg) = switch (tone) {
+      PillTone.good => (c.success, c.successBg),
+      PillTone.warn => (c.warning, c.warningBg),
+      PillTone.bad => (c.danger, c.dangerBg),
+      PillTone.neutral => (c.textSecondary, c.inset),
     };
-    final text = onGradient ? context.brand.onHero : color;
-    final child = AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOut,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: onGradient ? context.brand.glass : color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: onGradient ? context.brand.glassBorder : color.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 200),
-              style: Theme.of(context).textTheme.labelLarge!.copyWith(color: text),
-              child: Text(label, overflow: TextOverflow.ellipsis),
+    final dot = toneDot(c, tone);
+    final pill = DecoratedBox(
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(Radii.pill)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
             ),
-          ),
-          if (trailing != null) ...[const SizedBox(width: 6), trailing!],
-        ],
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(color: fg),
+              ),
+            ),
+            if (trailing != null) ...[const SizedBox(width: 4), trailing!],
+          ],
+        ),
       ),
     );
-    if (onTap == null) return child;
-    return Material(
-      type: MaterialType.transparency,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: child,
-      ),
+    if (onTap == null) return pill;
+    return HoverTint(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(Radii.pill),
+      child: pill,
     );
   }
 }
 
+/// Small secondary-coloured heading above a group or list.
 class SectionHeader extends StatelessWidget {
   const SectionHeader(this.title, {super.key, this.trailing});
 
@@ -136,21 +135,23 @@ class SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, Gap.xl, 4, Gap.s),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title.toUpperCase(),
-              style: t.textTheme.labelMedium?.copyWith(
-                color: t.colorScheme.onSurfaceVariant,
-                letterSpacing: 1.1,
-                fontWeight: FontWeight.w700,
+      padding: const EdgeInsets.fromLTRB(4, Gap.xl, 0, 6),
+      child: SizedBox(
+        height: 28,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: t.textTheme.labelMedium?.copyWith(
+                  color: context.c.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-          ),
-          ?trailing,
-        ],
+            ?trailing,
+          ],
+        ),
       ),
     );
   }
@@ -168,7 +169,7 @@ class PageTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, Gap.l, 4, Gap.s),
+      padding: const EdgeInsets.fromLTRB(4, 0, 0, Gap.s),
       child: Row(
         children: [
           Expanded(
@@ -181,7 +182,7 @@ class PageTitle extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(
                       subtitle!,
-                      style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                      style: t.textTheme.bodyMedium?.copyWith(color: context.c.textSecondary),
                     ),
                   ),
               ],
@@ -194,117 +195,89 @@ class PageTitle extends StatelessWidget {
   }
 }
 
-/// Centered content column with a max width, scrolling when needed.
+/// Horizontal page padding: 24 (16 on phones), plus whatever it takes to keep
+/// the content at most [maxWidth] wide and centred.
+double pageGutter(double viewportWidth, {double maxWidth = kContentMaxWidth}) {
+  final base = viewportWidth < kRailMinWidth ? 16.0 : 24.0;
+  final extra = (viewportWidth - maxWidth) / 2;
+  return extra > 0 ? base + extra : base;
+}
+
+/// The scrolling body of a page: a centred column of at most [maxWidth].
 class PageScroll extends StatelessWidget {
-  const PageScroll({super.key, required this.children, this.maxWidth = 920});
+  const PageScroll({super.key, required this.children, this.maxWidth = kContentMaxWidth});
 
   final List<Widget> children;
   final double maxWidth;
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(Gap.l, Gap.s, Gap.l, Gap.xxl),
+    return LayoutBuilder(
+      builder: (context, box) {
+        final gutter = pageGutter(box.maxWidth, maxWidth: maxWidth);
+        final top = box.maxWidth < kRailMinWidth ? 16.0 : 24.0;
+        return ListView(
+          padding: EdgeInsets.fromLTRB(gutter, top, gutter, 32),
           children: children,
-        ),
-      ),
+        );
+      },
     );
   }
 }
 
-/// Empty list placeholder: a tonal icon badge, a title and a hint.
+/// Empty list placeholder: a quiet icon, a title and a hint.
 class EmptyState extends StatelessWidget {
-  const EmptyState({super.key, required this.icon, required this.title, this.message, this.action});
+  const EmptyState({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.message,
+    this.action,
+    this.compact = false,
+    this.logo = false,
+  });
 
   final IconData icon;
   final String title;
   final String? message;
   final Widget? action;
 
+  /// Less padding, for placeholders inside a card.
+  final bool compact;
+
+  /// Show the Thelxis logo instead of [icon] (first-run placeholders).
+  final bool logo;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    final c = context.c;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Gap.xl, vertical: Gap.xxl),
+      padding: EdgeInsets.symmetric(horizontal: Gap.xl, vertical: compact ? Gap.xl : Gap.xxl),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    t.colorScheme.primaryContainer,
-                    t.colorScheme.primaryContainer.withValues(alpha: 0.45),
-                  ],
-                ),
-              ),
-              child: Icon(icon, size: 28, color: t.colorScheme.onPrimaryContainer),
+            if (logo) const ThelxisLogo(size: 40) else Icon(icon, size: 28, color: c.textMuted),
+            const SizedBox(height: Gap.m),
+            Text(
+              title,
+              style: t.textTheme.titleSmall,
+              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: Gap.l),
-            Text(title, style: t.textTheme.titleMedium, textAlign: TextAlign.center),
             if (message != null) ...[
               const SizedBox(height: Gap.xs),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 360),
                 child: Text(
                   message!,
-                  style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                  style: t.textTheme.bodySmall?.copyWith(color: c.textSecondary),
                   textAlign: TextAlign.center,
                 ),
               ),
             ],
             if (action != null) ...[const SizedBox(height: Gap.l), action!],
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Frosted-glass panel: blurred backdrop, translucent fill, hairline border.
-class GlassPanel extends StatelessWidget {
-  const GlassPanel({
-    super.key,
-    required this.child,
-    this.padding = const EdgeInsets.all(Gap.l),
-    this.radius = 18,
-    this.blur = 14,
-    this.fill,
-    this.border,
-  });
-
-  final Widget child;
-  final EdgeInsetsGeometry padding;
-  final double radius;
-  final double blur;
-  final Color? fill;
-  final Color? border;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: fill ?? brand.glass,
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: border ?? brand.glassBorder),
-          ),
-          child: child,
         ),
       ),
     );

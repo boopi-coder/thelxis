@@ -18,55 +18,61 @@ class ControlledBanner extends StatelessWidget {
     final s = context.s;
     final live = manager.liveHostSessions;
     final scheme = Theme.of(context).colorScheme;
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
-      alignment: Alignment.topCenter,
-      child: live.isEmpty
-          ? const SizedBox(width: double.infinity)
-          : Material(
-              color: scheme.errorContainer,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: Gap.l, vertical: Gap.s),
-                  child: Row(
-                    children: [
-                      Icon(Icons.screen_share_rounded, color: scheme.onErrorContainer, size: 20),
-                      const SizedBox(width: Gap.m),
-                      Expanded(
-                        child: Text(
-                          live.any((x) => x.controlEnabled)
-                              ? s.t('banner.controlledBy', {
-                                  'names': live.map((x) => x.peer.name).join(', '),
-                                })
-                              : s.t('banner.viewedBy', {
-                                  'names': live.map((x) => x.peer.name).join(', '),
-                                }),
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(color: scheme.onErrorContainer),
-                        ),
+    return live.isEmpty
+        ? const SizedBox(width: double.infinity)
+        : Material(
+            color: scheme.errorContainer,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Gap.l,
+                  vertical: Gap.s,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.screen_share_rounded,
+                      color: scheme.onErrorContainer,
+                      size: 20,
+                    ),
+                    const SizedBox(width: Gap.m),
+                    Expanded(
+                      child: Text(
+                        live.any((x) => x.controlEnabled)
+                            ? s.t('banner.controlledBy', {
+                                'names': live
+                                    .map((x) => x.peer.name)
+                                    .join(', '),
+                              })
+                            : s.t('banner.viewedBy', {
+                                'names': live
+                                    .map((x) => x.peer.name)
+                                    .join(', '),
+                              }),
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall
+                            ?.copyWith(color: scheme.onErrorContainer),
                       ),
-                      if (live.length == 1 && hostCanShowFiles(live.first))
-                        _FilesControl(session: live.first),
-                      if (live.length == 1 && live.first.permissions.control)
-                        _PauseControl(session: live.first),
-                      FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: scheme.error,
-                          foregroundColor: scheme.onError,
-                          minimumSize: const Size(0, 36),
-                        ),
-                        onPressed: manager.stopAllHostSessions,
-                        child: Text(live.length > 1 ? s.t('banner.stopAll') : s.t('banner.stop')),
+                    ),
+                    if (live.length == 1 && hostCanShowFiles(live.first))
+                      _FilesControl(session: live.first),
+                    if (live.length == 1 && live.first.permissions.control)
+                      _PauseControl(session: live.first),
+                    FilledButton(
+                      style: context.dangerButton,
+                      onPressed: manager.stopAllHostSessions,
+                      child: Text(
+                        live.length > 1
+                            ? s.t('banner.stopAll')
+                            : s.t('banner.stop'),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
-    );
+          );
   }
 }
 
@@ -82,8 +88,13 @@ class _PauseControl extends StatelessWidget {
       builder: (context, _) {
         final on = session.permissions.control;
         return TextButton(
+          style: TextButton.styleFrom(foregroundColor: context.c.danger),
           onPressed: () => session.setControlAllowed(!on),
-          child: Text(on ? context.s.t('banner.pauseControl') : context.s.t('banner.allowControl')),
+          child: Text(
+            on
+                ? context.s.t('banner.pauseControl')
+                : context.s.t('banner.allowControl'),
+          ),
         );
       },
     );

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../ui/theme.dart';
+
 enum FileKind { folder, image, video, audio, archive, pdf, document, spreadsheet, presentation, code, text, app, other }
 
 /// What a file looks like in lists: an icon and an accent colour that reads
@@ -81,16 +83,23 @@ class FileIconTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    final style = styleOf(fileKindOf(name, isDir: isDir));
+    // One accent only: folders are blue, every other type is a neutral icon
+    // (the type is told by the glyph, not by a rainbow of colours).
+    final c = context.c;
+    final kind = fileKindOf(name, isDir: isDir);
+    final style = styleOf(kind);
     final tile = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: style.container(brightness),
-        borderRadius: BorderRadius.circular(size * 0.3),
+        color: kind == FileKind.folder ? c.accentSoft : c.inset,
+        borderRadius: BorderRadius.circular(size * 0.25),
       ),
-      child: Icon(style.icon, size: size * 0.55, color: style.accent(brightness)),
+      child: Icon(
+        style.icon,
+        size: size * 0.55,
+        color: kind == FileKind.folder ? c.accent : c.textSecondary,
+      ),
     );
     if (badge == null) return tile;
     return SizedBox(

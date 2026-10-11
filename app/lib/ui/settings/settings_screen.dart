@@ -13,10 +13,13 @@ import '../../update/ui/update_settings_section.dart';
 import '../../update/update_service.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/rows.dart';
+import '../widgets/thelxis_logo.dart';
 import 'permanent_password_dialog.dart';
 import 'trusted_devices_section.dart';
 
-/// Security, connectivity, appearance, startup and about.
+/// Security, connectivity, appearance, startup and about, as grouped cards
+/// of rows in the manner of System Settings.
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
@@ -29,214 +32,231 @@ class SettingsScreen extends StatelessWidget {
     final info = context.read<SystemInfo>();
     final identity = context.read<Identity>();
     final perms = st.defaultPermissions;
+    const gap = SizedBox(height: Gap.xl);
 
     return PageScroll(
-      maxWidth: 760,
+      maxWidth: 820,
       children: [
         PageTitle(s.t('settings.title')),
-        SectionHeader(s.t('settings.device')),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(Gap.l),
-            child: _DeviceNameField(initial: st.deviceName, onSaved: st.setDeviceName),
-          ),
-        ),
-        SectionHeader(s.t('settings.security')),
-        Card(
-          child: Column(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.password_rounded),
-                title: Text(s.t('settings.permanent')),
-                subtitle: Text(st.hasPermanentPassword ? s.t('settings.permanent.set') : s.t('settings.permanent.unset')),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextButton(
-                      onPressed: () => showPermanentPasswordDialog(context, creds),
-                      child: Text(st.hasPermanentPassword ? s.t('settings.permanent.change') : s.t('settings.permanent.setBtn')),
-                    ),
-                    if (st.hasPermanentPassword)
-                      TextButton(
-                        onPressed: creds.clearPermanentPassword,
-                        child: Text(s.t('settings.permanent.remove')),
-                      ),
-                  ],
-                ),
-              ),
-              const Divider(),
-              SwitchListTile(
-                secondary: const Icon(Icons.how_to_reg_outlined),
-                title: Text(s.t('settings.approval')),
-                subtitle: Text(s.t('settings.approval.hint')),
-                value: st.requireApproval,
-                onChanged: st.setRequireApproval,
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.autorenew_rounded),
-                title: Text(s.t('settings.rotate')),
-                value: st.rotateOneTimePassword,
-                onChanged: st.setRotateOneTimePassword,
-              ),
-              const Divider(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(Gap.l, Gap.m, Gap.l, 0),
-                child: Align(alignment: Alignment.centerLeft, child: Text(s.t('settings.defaults'))),
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.mouse_outlined),
-                title: Text(s.t('settings.defaults.control')),
-                subtitle: Text(s.t('settings.defaults.control.hint')),
-                value: perms.control,
-                onChanged: (v) => st.setDefaultPermissions(perms.copyWith(control: v)),
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.content_paste_rounded),
-                title: Text(s.t('settings.defaults.clipboard')),
-                value: perms.clipboard,
-                onChanged: (v) => st.setDefaultPermissions(perms.copyWith(clipboard: v)),
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.folder_copy_outlined),
-                title: Text(s.t('settings.defaults.files')),
-                value: perms.files,
-                onChanged: (v) => st.setDefaultPermissions(perms.copyWith(files: v)),
-              ),
-            ],
-          ),
-        ),
-        SectionHeader(s.t('settings.trusted')),
-        const Card(child: TrustedDevicesSection()),
-        SectionHeader(s.t('settings.connectivity')),
-        Card(
-          child: Column(
-            children: [
-              SwitchListTile(
-                secondary: const Icon(Icons.login_rounded),
-                title: Text(s.t('settings.incoming')),
-                subtitle: Text(s.t('settings.incoming.hint')),
-                value: st.allowIncoming,
-                onChanged: st.setAllowIncoming,
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.router_outlined),
-                title: Text(s.t('settings.upnp')),
-                subtitle: Text(s.t('settings.upnp.hint')),
-                value: st.upnp,
-                onChanged: st.allowIncoming ? st.setUpnp : null,
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.wifi_find_rounded),
-                title: Text(s.t('settings.lan')),
-                subtitle: Text(s.t('settings.lan.hint')),
-                value: st.lanDiscovery,
-                onChanged: st.setLanDiscovery,
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.public_rounded),
-                title: Text(s.t('settings.stun')),
-                subtitle: Text(s.t('settings.stun.hint')),
-                value: st.publicStun,
-                onChanged: st.setPublicStun,
-              ),
-              const ManualForwardingSection(),
-              SwitchListTile(
-                key: const ValueKey('gateway-switch'),
-                secondary: const Icon(Icons.hub_outlined),
-                title: Text(s.t('settings.gateway')),
-                subtitle: Text(s.t('settings.gateway.hint')),
-                value: st.officeGateway,
-                onChanged: st.allowIncoming ? st.setOfficeGateway : null,
-              ),
-              ListTile(
-                leading: const Icon(Icons.network_check_rounded),
-                title: Text(s.t('settings.diagnostics')),
-                subtitle: Text(s.t('settings.diagnostics.hint')),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const DiagnosticsScreen()),
-                ),
-              ),
-            ],
-          ),
-        ),
-        SectionHeader(s.t('settings.appearance')),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(Gap.l),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(s.t('settings.theme'), style: Theme.of(context).textTheme.labelLarge),
-                const SizedBox(height: Gap.s),
-                SegmentedButton<ThemeMode>(
-                  segments: [
-                    ButtonSegment(value: ThemeMode.dark, icon: const Icon(Icons.dark_mode_outlined), label: Text(s.t('settings.theme.dark'))),
-                    ButtonSegment(value: ThemeMode.light, icon: const Icon(Icons.light_mode_outlined), label: Text(s.t('settings.theme.light'))),
-                    ButtonSegment(value: ThemeMode.system, icon: const Icon(Icons.brightness_auto_outlined), label: Text(s.t('settings.theme.system'))),
-                  ],
-                  selected: {st.themeMode},
-                  onSelectionChanged: (v) => st.setThemeMode(v.first),
-                ),
-                const SizedBox(height: Gap.l),
-                Text(s.t('settings.language'), style: Theme.of(context).textTheme.labelLarge),
-                const SizedBox(height: Gap.s),
-                SegmentedButton<String>(
-                  segments: [
-                    ButtonSegment(value: kLanguageSystem, icon: const Icon(Icons.translate_rounded), label: Text(s.t('settings.language.system'))),
-                    const ButtonSegment(value: 'en', label: Text('English')),
-                    const ButtonSegment(value: 'ru', label: Text('Русский')),
-                  ],
-                  selected: {st.language},
-                  onSelectionChanged: (v) => st.setLanguage(v.first),
-                ),
-              ],
+        const SizedBox(height: Gap.l),
+        SettingsGroup(
+          title: s.t('settings.device'),
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(Gap.l),
+              child: _DeviceNameField(initial: st.deviceName, onSaved: st.setDeviceName),
             ),
-          ),
+          ],
+        ),
+        gap,
+        SettingsGroup(
+          title: s.t('settings.security'),
+          children: [
+            SettingsRow(
+              icon: Icons.password_rounded,
+              title: s.t('settings.permanent'),
+              subtitle: st.hasPermanentPassword ? s.t('settings.permanent.set') : s.t('settings.permanent.unset'),
+              trailing: Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  TextButton(
+                    onPressed: () => showPermanentPasswordDialog(context, creds),
+                    child: Text(
+                      st.hasPermanentPassword ? s.t('settings.permanent.change') : s.t('settings.permanent.setBtn'),
+                    ),
+                  ),
+                  if (st.hasPermanentPassword)
+                    TextButton(
+                      style: TextButton.styleFrom(foregroundColor: context.c.danger),
+                      onPressed: creds.clearPermanentPassword,
+                      child: Text(s.t('settings.permanent.remove')),
+                    ),
+                ],
+              ),
+            ),
+            SwitchRow(
+              icon: Icons.how_to_reg_outlined,
+              title: s.t('settings.approval'),
+              subtitle: s.t('settings.approval.hint'),
+              value: st.requireApproval,
+              onChanged: st.setRequireApproval,
+            ),
+            SwitchRow(
+              icon: Icons.autorenew_rounded,
+              title: s.t('settings.rotate'),
+              value: st.rotateOneTimePassword,
+              onChanged: st.setRotateOneTimePassword,
+            ),
+          ],
+        ),
+        gap,
+        SettingsGroup(
+          title: s.t('settings.defaults'),
+          children: [
+            SwitchRow(
+              icon: Icons.mouse_outlined,
+              title: s.t('settings.defaults.control'),
+              subtitle: s.t('settings.defaults.control.hint'),
+              value: perms.control,
+              onChanged: (v) => st.setDefaultPermissions(perms.copyWith(control: v)),
+            ),
+            SwitchRow(
+              icon: Icons.content_paste_rounded,
+              title: s.t('settings.defaults.clipboard'),
+              value: perms.clipboard,
+              onChanged: (v) => st.setDefaultPermissions(perms.copyWith(clipboard: v)),
+            ),
+            SwitchRow(
+              icon: Icons.folder_copy_outlined,
+              title: s.t('settings.defaults.files'),
+              value: perms.files,
+              onChanged: (v) => st.setDefaultPermissions(perms.copyWith(files: v)),
+            ),
+          ],
+        ),
+        gap,
+        SettingsGroup(title: s.t('settings.trusted'), children: const [TrustedDevicesSection()]),
+        gap,
+        SettingsGroup(
+          title: s.t('settings.connectivity'),
+          children: [
+            SwitchRow(
+              icon: Icons.login_rounded,
+              title: s.t('settings.incoming'),
+              subtitle: s.t('settings.incoming.hint'),
+              value: st.allowIncoming,
+              onChanged: st.setAllowIncoming,
+            ),
+            SwitchRow(
+              icon: Icons.router_outlined,
+              title: s.t('settings.upnp'),
+              subtitle: s.t('settings.upnp.hint'),
+              value: st.upnp,
+              onChanged: st.allowIncoming ? st.setUpnp : null,
+            ),
+            SwitchRow(
+              icon: Icons.wifi_find_rounded,
+              title: s.t('settings.lan'),
+              subtitle: s.t('settings.lan.hint'),
+              value: st.lanDiscovery,
+              onChanged: st.setLanDiscovery,
+            ),
+            SwitchRow(
+              icon: Icons.public_rounded,
+              title: s.t('settings.stun'),
+              subtitle: s.t('settings.stun.hint'),
+              value: st.publicStun,
+              onChanged: st.setPublicStun,
+            ),
+            const ManualForwardingSection(),
+            SwitchRow(
+              key: const ValueKey('gateway-switch'),
+              icon: Icons.hub_outlined,
+              title: s.t('settings.gateway'),
+              subtitle: s.t('settings.gateway.hint'),
+              value: st.officeGateway,
+              onChanged: st.allowIncoming ? st.setOfficeGateway : null,
+            ),
+            SettingsRow(
+              icon: Icons.network_check_rounded,
+              title: s.t('settings.diagnostics'),
+              subtitle: s.t('settings.diagnostics.hint'),
+              trailing: Icon(Icons.chevron_right_rounded, color: context.c.textMuted),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const DiagnosticsScreen()),
+              ),
+            ),
+          ],
+        ),
+        gap,
+        SettingsGroup(
+          title: s.t('settings.appearance'),
+          children: [
+            SettingsRow(
+              icon: Icons.contrast_rounded,
+              title: s.t('settings.theme'),
+              stackTrailingBelow: 460,
+              trailing: AppSegmented<ThemeMode>(
+                options: [
+                  (ThemeMode.system, s.t('settings.theme.system'), null),
+                  (ThemeMode.light, s.t('settings.theme.light'), null),
+                  (ThemeMode.dark, s.t('settings.theme.dark'), null),
+                ],
+                selected: st.themeMode,
+                onChanged: st.setThemeMode,
+              ),
+            ),
+            SettingsRow(
+              icon: Icons.translate_rounded,
+              title: s.t('settings.language'),
+              stackTrailingBelow: 460,
+              trailing: AppSegmented<String>(
+                options: [
+                  (kLanguageSystem, s.t('settings.language.system'), null),
+                  ('en', 'English', null),
+                  ('ru', 'Русский', null),
+                ],
+                selected: st.language,
+                onChanged: st.setLanguage,
+              ),
+            ),
+          ],
         ),
         if (desktop.isDesktop) ...[
-          SectionHeader(s.t('settings.startup')),
-          Card(
-            child: SwitchListTile(
-              secondary: const Icon(Icons.power_settings_new_rounded),
-              title: Text(s.t('settings.autostart')),
-              subtitle: Text(s.t('settings.autostart.hint')),
-              value: st.launchAtStartup,
-              onChanged: (v) async {
-                await st.setLaunchAtStartup(v);
-                await desktop.setLaunchAtStartup(v);
-              },
-            ),
-          ),
-        ],
-        SectionHeader(s.t('settings.updates')),
-        UpdateSettingsSection(service: context.read<UpdateService>()),
-        SectionHeader(s.t('settings.about')),
-        Card(
-          child: Column(
+          gap,
+          SettingsGroup(
+            title: s.t('settings.startup'),
             children: [
-              ListTile(
-                leading: const Icon(Icons.info_outline_rounded),
-                title: const Text('Thelxis'),
-                subtitle: Text(s.t('settings.version', {'version': info.appVersion, 'os': info.os, 'arch': info.arch})),
-              ),
-              ListTile(
-                leading: const Icon(Icons.fingerprint_rounded),
-                title: Text(s.t('home.yourId')),
-                subtitle: Text(identity.formattedId),
-                trailing: IconButton(
-                  tooltip: s.t('common.copy'),
-                  icon: const Icon(Icons.copy_rounded),
-                  onPressed: () => copyToClipboard(context, identity.formattedId, s.t('home.idNoun')),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.lock_outline_rounded),
-                title: Text(s.t('settings.noServers')),
-                subtitle: Text(s.t('settings.noServers.hint')),
+              SwitchRow(
+                icon: Icons.power_settings_new_rounded,
+                title: s.t('settings.autostart'),
+                subtitle: s.t('settings.autostart.hint'),
+                value: st.launchAtStartup,
+                onChanged: (v) async {
+                  await st.setLaunchAtStartup(v);
+                  await desktop.setLaunchAtStartup(v);
+                },
               ),
             ],
           ),
+        ],
+        gap,
+        UpdateSettingsSection(service: context.read<UpdateService>(), title: s.t('settings.updates')),
+        gap,
+        SettingsGroup(
+          title: s.t('settings.about'),
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: Gap.xl),
+              child: Column(
+                children: [
+                  const ThelxisLogo(size: 64),
+                  const SizedBox(height: Gap.m),
+                  Text('Thelxis', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 2),
+                  Text(
+                    s.t('settings.version', {'version': info.appVersion, 'os': info.os, 'arch': info.arch}),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.c.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            SettingsRow(
+              icon: Icons.fingerprint_rounded,
+              title: s.t('home.yourId'),
+              subtitle: identity.formattedId,
+              trailing: IconButton(
+                tooltip: s.t('common.copy'),
+                icon: const Icon(Icons.copy_rounded, size: 18),
+                onPressed: () => copyToClipboard(context, identity.formattedId, s.t('home.idNoun')),
+              ),
+            ),
+            SettingsRow(
+              icon: Icons.lock_outline_rounded,
+              title: s.t('settings.noServers'),
+              subtitle: s.t('settings.noServers.hint'),
+            ),
+          ],
         ),
       ],
     );
@@ -274,7 +294,6 @@ class _DeviceNameFieldState extends State<_DeviceNameField> {
         labelText: s.t('settings.deviceName'),
         helperText: s.t('settings.deviceName.hint'),
         counterText: '',
-        prefixIcon: const Icon(Icons.badge_outlined),
       ),
     );
   }

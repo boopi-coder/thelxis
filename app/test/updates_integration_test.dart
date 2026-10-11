@@ -122,7 +122,7 @@ void main() {
     await tester.tap(find.text('Settings').first);
     await tester.pump(const Duration(milliseconds: 100));
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('UPDATES'), findsOneWidget);
+    expect(find.text('Updates'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 

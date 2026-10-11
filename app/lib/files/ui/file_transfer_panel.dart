@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../ui/theme.dart';
+
 import '../file_transfer_endpoint.dart';
 import 'files_strings.dart';
 import 'pick_and_send.dart';
@@ -36,24 +38,24 @@ class _FileTransferPanelState extends State<FileTransferPanel> with SingleTicker
   @override
   Widget build(BuildContext context) {
     final s = FilesStrings.of(context);
-    final scheme = Theme.of(context).colorScheme;
+    final c = context.c;
     final endpoint = widget.endpoint;
     final showRemote = !endpoint.isHost;
 
     return Material(
-      color: scheme.surfaceContainerLow,
+      color: c.surface,
       child: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
             child: Row(
               children: [
-                Icon(Icons.folder_copy_rounded, color: scheme.primary),
+                Icon(Icons.folder_copy_outlined, color: c.textSecondary),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     s.panelTitle,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
                 SendFilesMenuButton(endpoint: endpoint, onQueued: (_) => _showTransfers()),
@@ -70,20 +72,24 @@ class _FileTransferPanelState extends State<FileTransferPanel> with SingleTicker
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
               child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(color: scheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(14)),
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(color: c.inset, borderRadius: BorderRadius.circular(Radii.control)),
                 child: TabBar(
                   controller: _tabs,
                   dividerColor: Colors.transparent,
                   indicatorSize: TabBarIndicatorSize.tab,
-                  indicator: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(11)),
-                  labelColor: scheme.onPrimaryContainer,
-                  unselectedLabelColor: scheme.onSurfaceVariant,
-                  labelStyle: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
-                  splashBorderRadius: BorderRadius.circular(11),
+                  indicator: BoxDecoration(
+                    color: Theme.of(context).brightness == Brightness.dark ? c.insetStrong : c.surface,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: c.border),
+                  ),
+                  labelColor: c.text,
+                  unselectedLabelColor: c.textSecondary,
+                  labelStyle: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+                  splashBorderRadius: BorderRadius.circular(6),
                   tabs: [
-                    Tab(height: 38, child: _TransfersTabLabel(endpoint: endpoint, label: s.tabTransfers)),
-                    Tab(height: 38, text: s.tabRemote),
+                    Tab(height: 30, child: _TransfersTabLabel(endpoint: endpoint, label: s.tabTransfers)),
+                    Tab(height: 30, text: s.tabRemote),
                   ],
                 ),
               ),
@@ -122,24 +128,19 @@ class _TransfersTabLabel extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              child: running == 0
-                  ? const SizedBox.shrink()
-                  : Container(
-                      margin: const EdgeInsets.only(left: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
-                      decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(99)),
-                      child: Text(
-                        '$running',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: scheme.onPrimary,
-                              fontWeight: FontWeight.w700,
-                            ),
+            if (running > 0)
+              Container(
+                margin: const EdgeInsets.only(left: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(99)),
+                child: Text(
+                  '$running',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: scheme.onPrimary,
+                        fontWeight: FontWeight.w600,
                       ),
-                    ),
-            ),
+                ),
+              ),
           ],
         );
       },

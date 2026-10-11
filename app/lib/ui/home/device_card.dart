@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -11,15 +9,18 @@ import '../../platform/host_platform.dart';
 import '../../session/host_credentials.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/hover_tint.dart';
 import '../widgets/thelxis_logo.dart';
+import '../widgets/rows.dart';
+import '../widgets/surface.dart';
 import '../../net/discovery.dart';
 import 'reachability.dart';
 import 'reachability_advice.dart';
 import 'share_access_dialog.dart';
 import '../../l10n/strings.dart';
 
-/// "This device": a violet hero card with the Thelxis ID, the one-time
-/// password, reachability, the allow-incoming switch and Share access.
+/// "This device": the Thelxis ID, the one-time password, reachability, the
+/// allow-incoming switch and Share access, in one flat card.
 class DeviceCard extends StatefulWidget {
   const DeviceCard({super.key, required this.onShowDiagnostics});
 
@@ -83,141 +84,66 @@ class _DeviceCardState extends State<DeviceCard> {
   @override
   Widget build(BuildContext context) {
     final s = context.s;
-    final brand = context.brand;
-    final t = Theme.of(context);
+    final c = context.c;
+    final t = Theme.of(context).textTheme;
     final identity = context.read<Identity>();
     final settings = context.watch<AppSettings>();
     final connectivity = context.read<Connectivity>();
     final platform = context.read<HostPlatform>();
     final id = formatThelxisId(identity.id);
-    final compact = MediaQuery.sizeOf(context).width < 420;
-    final pad = compact ? Gap.l : Gap.xl;
+    final compact = MediaQuery.sizeOf(context).width < 480;
 
-    return Container(
-      decoration: BoxDecoration(
-        gradient: brand.hero,
-        borderRadius: BorderRadius.circular(28),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
+    return AppCard(
+      padding: EdgeInsets.all(compact ? Gap.l : 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Decorative frosted discs behind the content.
-          Positioned(right: -60, top: -70, child: _Disc(size: 220, alpha: 0.10)),
-          Positioned(left: -50, bottom: -80, child: _Disc(size: 200, alpha: 0.07)),
-          Padding(
-            padding: EdgeInsets.all(pad),
-            child: DefaultTextStyle.merge(
-              style: TextStyle(color: brand.onHero),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: brand.glass,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: brand.glassBorder),
-                        ),
-                        child: const ThelxisLogo(size: 40),
-                      ),
-                      const SizedBox(width: Gap.m),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              s.t('home.thisDevice'),
-                              style: t.textTheme.labelMedium?.copyWith(color: brand.onHeroMuted),
-                            ),
-                            Text(
-                              settings.deviceName,
-                              style: t.textTheme.titleMedium?.copyWith(color: brand.onHero),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: Gap.m),
-                  ReachabilityPill(
-                    connectivity: connectivity,
-                    allowIncoming: settings.allowIncoming,
-                    upnpEnabled: settings.upnp,
-                    onWhy: widget.onShowDiagnostics,
-                    onGradient: true,
-                  ),
-                  ReachabilityHint(
-                    connectivity: connectivity,
-                    allowIncoming: settings.allowIncoming,
-                    upnpEnabled: settings.upnp,
-                    onTap: widget.onShowDiagnostics,
-                    color: brand.onHeroMuted,
-                  ),
-                  SizedBox(height: compact ? Gap.xl : Gap.xxl),
-                  Text(
-                    s.t('home.yourId').toUpperCase(),
-                    style: t.textTheme.labelSmall?.copyWith(
-                      color: brand.onHeroMuted,
-                      letterSpacing: 1.4,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: Gap.xs),
-                  Row(
-                    children: [
-                      Flexible(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: SelectableText(
-                            id,
-                            style: t.textTheme.headlineMedium?.copyWith(
-                              color: brand.onHero,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1.6,
-                              fontFeatures: const [FontFeature.tabularFigures()],
-                            ),
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: s.t('home.copyId'),
-                        color: brand.onHero,
-                        icon: const Icon(Icons.copy_rounded),
-                        onPressed: () => copyToClipboard(context, id, s.t('home.idNoun')),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: Gap.l),
-                  _OneTimePassword(
-                    visible: _showOtp,
-                    onToggle: () => setState(() => _showOtp = !_showOtp),
-                  ),
-                  const SizedBox(height: Gap.l),
-                  _IncomingSwitch(
-                    value: settings.allowIncoming,
-                    supported: platform.hostSupported,
-                    onChanged: settings.setAllowIncoming,
-                  ),
-                  const SizedBox(height: Gap.l),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: const Color(0xFF4A2FC9),
-                      ),
-                      onPressed: () => showShareAccessDialog(context),
-                      icon: const Icon(Icons.ios_share_rounded),
-                      label: Text(s.t('home.share')),
-                    ),
-                  ),
-                  _PermissionsNotice(platform: platform),
-                ],
+          _header(context, compact, settings, connectivity),
+          const SizedBox(height: Gap.l),
+          Text(s.t('home.yourId'), style: t.labelMedium?.copyWith(color: c.textSecondary)),
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: SelectableText(id, style: context.idStyle),
+                ),
               ),
+              const SizedBox(width: Gap.xs),
+              IconButton(
+                tooltip: s.t('home.copyId'),
+                icon: const Icon(Icons.copy_rounded, size: 18),
+                onPressed: () => copyToClipboard(context, id, s.t('home.idNoun')),
+              ),
+            ],
+          ),
+          ReachabilityHint(
+            connectivity: connectivity,
+            allowIncoming: settings.allowIncoming,
+            upnpEnabled: settings.upnp,
+            onTap: widget.onShowDiagnostics,
+          ),
+          const SizedBox(height: Gap.l),
+          _OneTimePassword(
+            visible: _showOtp,
+            onToggle: () => setState(() => _showOtp = !_showOtp),
+          ),
+          const SizedBox(height: Gap.s),
+          _IncomingSwitch(
+            value: settings.allowIncoming,
+            supported: platform.hostSupported,
+            onChanged: settings.setAllowIncoming,
+          ),
+          const SizedBox(height: Gap.m),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              style: context.secondaryButton,
+              onPressed: () => showShareAccessDialog(context),
+              icon: const Icon(Icons.ios_share_rounded),
+              label: Text(s.t('home.share')),
             ),
           ),
         ],
@@ -226,23 +152,47 @@ class _DeviceCardState extends State<DeviceCard> {
   }
 }
 
-class _Disc extends StatelessWidget {
-  const _Disc({required this.size, required this.alpha});
-
-  final double size;
-  final double alpha;
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withValues(alpha: alpha),
+extension on _DeviceCardState {
+  Widget _header(BuildContext context, bool compact, AppSettings settings, Connectivity connectivity) {
+    final s = context.s;
+    final c = context.c;
+    final t = Theme.of(context).textTheme;
+    final pill = ReachabilityPill(
+      connectivity: connectivity,
+      allowIncoming: settings.allowIncoming,
+      upnpEnabled: settings.upnp,
+      onWhy: widget.onShowDiagnostics,
+    );
+    final names = Row(
+      children: [
+        const ThelxisLogo(size: 32),
+        const SizedBox(width: Gap.m),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(s.t('home.thisDevice'), style: t.labelMedium?.copyWith(color: c.textSecondary)),
+              const SizedBox(height: 2),
+              Text(settings.deviceName, style: t.titleMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ],
+          ),
         ),
-      ),
+      ],
+    );
+    // On a phone the status pill gets its own line so the name is not cut.
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [names, const SizedBox(height: Gap.s), pill],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: names),
+        const SizedBox(width: Gap.m),
+        ConstrainedBox(constraints: const BoxConstraints(maxWidth: 220), child: pill),
+      ],
     );
   }
 }
@@ -257,31 +207,36 @@ class _IncomingSwitch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.s;
-    final brand = context.brand;
-    final t = Theme.of(context);
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(s.t('home.allowIncoming'), style: t.textTheme.titleSmall?.copyWith(color: brand.onHero)),
-              const SizedBox(height: 2),
-              Text(
-                supported ? s.t('home.allowIncoming.hint') : s.t('home.allowIncoming.unsupported'),
-                style: t.textTheme.bodySmall?.copyWith(color: brand.onHeroMuted),
+    final t = Theme.of(context).textTheme;
+    final c = context.c;
+    return HoverTint(
+      onTap: () => onChanged(!value),
+      borderRadius: BorderRadius.circular(Radii.control),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    s.t('home.allowIncoming'),
+                    style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    supported ? s.t('home.allowIncoming.hint') : s.t('home.allowIncoming.unsupported'),
+                    style: t.bodySmall?.copyWith(color: c.textSecondary),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: Gap.m),
+            AppSwitch(value: value, onChanged: onChanged),
+          ],
         ),
-        Switch(
-          value: value,
-          activeTrackColor: Colors.white,
-          activeThumbColor: const Color(0xFF4A2FC9),
-          inactiveTrackColor: Colors.white24,
-          onChanged: onChanged,
-        ),
-      ],
+      ),
     );
   }
 }
@@ -295,171 +250,53 @@ class _OneTimePassword extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.s;
-    final brand = context.brand;
-    final t = Theme.of(context);
+    final t = Theme.of(context).textTheme;
+    final c = context.c;
     final creds = context.watch<HostCredentials>();
     final pw = creds.oneTimePassword;
-    return GlassPanel(
-      padding: const EdgeInsets.fromLTRB(Gap.l, Gap.s, Gap.xs, Gap.s),
-      radius: 16,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  s.t('home.otp'),
-                  style: t.textTheme.labelMedium?.copyWith(color: brand.onHeroMuted),
-                ),
-                const SizedBox(height: 2),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
-                  child: Text(
+    return DecoratedBox(
+      decoration: BoxDecoration(color: c.inset, borderRadius: BorderRadius.circular(Radii.control)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Gap.m, 6, Gap.xs, 6),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(s.t('home.otp'), style: t.labelSmall?.copyWith(color: c.textSecondary)),
+                  const SizedBox(height: 1),
+                  Text(
                     visible ? pw : '••••••••',
-                    key: ValueKey(visible ? pw : 'hidden'),
-                    style: t.textTheme.titleLarge?.copyWith(
-                      color: brand.onHero,
-                      fontFamily: 'monospace',
-                      letterSpacing: 3,
-                      fontWeight: FontWeight.w700,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.titleMedium?.copyWith(
+                      fontFamilyFallback: visible ? const ['Menlo', 'Consolas', 'Roboto Mono'] : null,
+                      letterSpacing: 2,
+                      fontFeatures: kTabularFigures,
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          IconButton(
-            tooltip: visible ? s.t('home.otp.hide') : s.t('home.otp.show'),
-            color: brand.onHero,
-            icon: Icon(visible ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-            onPressed: onToggle,
-          ),
-          IconButton(
-            tooltip: s.t('home.otp.copy'),
-            color: brand.onHero,
-            icon: const Icon(Icons.copy_rounded),
-            onPressed: () => copyToClipboard(context, pw, s.t('home.otp.noun')),
-          ),
-          IconButton(
-            tooltip: s.t('home.otp.refresh'),
-            color: brand.onHero,
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: creds.rotate,
-          ),
-        ],
+            IconButton(
+              tooltip: visible ? s.t('home.otp.hide') : s.t('home.otp.show'),
+              icon: Icon(visible ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
+              onPressed: onToggle,
+            ),
+            IconButton(
+              tooltip: s.t('home.otp.copy'),
+              icon: const Icon(Icons.copy_rounded, size: 18),
+              onPressed: () => copyToClipboard(context, pw, s.t('home.otp.noun')),
+            ),
+            IconButton(
+              tooltip: s.t('home.otp.refresh'),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              onPressed: creds.rotate,
+            ),
+          ],
+        ),
       ),
-    );
-  }
-}
-
-/// Shows missing OS permissions (macOS Screen Recording / Accessibility,
-/// Android accessibility service) with a button to grant them.
-class _PermissionsNotice extends StatefulWidget {
-  const _PermissionsNotice({required this.platform});
-
-  final HostPlatform platform;
-
-  @override
-  State<_PermissionsNotice> createState() => _PermissionsNoticeState();
-}
-
-class _PermissionsNoticeState extends State<_PermissionsNotice> with WidgetsBindingObserver {
-  Future<List<HostPermission>>? _missing;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _missing = _load();
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // The user may have just granted a permission in system settings.
-    if (state == AppLifecycleState.resumed) setState(() => _missing = _load());
-  }
-
-  Future<List<HostPermission>> _load() async {
-    if (!widget.platform.hostSupported) return const [];
-    final out = <HostPermission>[];
-    for (final p in [HostPermission.screenCapture, HostPermission.inputControl]) {
-      try {
-        if (await widget.platform.permissionStatus(p) == PermissionStatus.denied) out.add(p);
-      } on Object {
-        // An unavailable status check is not worth bothering the user about.
-      }
-    }
-    return out;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<List<HostPermission>>(
-      future: _missing,
-      builder: (context, snap) {
-        final missing = snap.data ?? const [];
-        if (missing.isEmpty) return const SizedBox.shrink();
-        final s = context.s;
-        final t = Theme.of(context);
-        return Padding(
-          padding: const EdgeInsets.only(top: Gap.l),
-          child: Column(
-            children: [
-              for (final m in missing)
-                Container(
-                  margin: const EdgeInsets.only(bottom: Gap.s),
-                  padding: const EdgeInsets.all(Gap.m),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.warning_amber_rounded, color: context.status.warn),
-                      const SizedBox(width: Gap.m),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              m == HostPermission.screenCapture
-                                  ? s.t('perm.screen')
-                                  : s.t('perm.input'),
-                              style: t.textTheme.bodyMedium?.copyWith(color: Colors.black87),
-                            ),
-                            if (m == HostPermission.inputControl && Platform.isAndroid)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Text(
-                                  s.t('perm.android.restricted'),
-                                  style: t.textTheme.bodySmall?.copyWith(color: Colors.black54),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () async {
-                          await widget.platform.requestPermission(m);
-                          if (mounted) setState(() => _missing = _load());
-                        },
-                        child: Text(s.t('perm.grant')),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

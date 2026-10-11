@@ -9,6 +9,7 @@ import '../../l10n/strings.dart';
 import '../connect_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/rows.dart';
 import 'command_palette.dart';
 import 'device_dialogs.dart';
 import 'device_tile.dart';
@@ -132,8 +133,10 @@ class _DevicesScreenState extends State<DevicesScreen> {
     final onNetwork = {for (final p in lan.peers) p.id};
 
     return PageScroll(
+      maxWidth: 960,
       children: [
         PageTitle(s.t('devices.title'), subtitle: s.t('devices.subtitle')),
+        const SizedBox(height: Gap.s),
         Row(
           children: [
             Expanded(
@@ -142,10 +145,10 @@ class _DevicesScreenState extends State<DevicesScreen> {
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
                   hintText: s.t('devices.search'),
-                  prefixIcon: const Icon(Icons.search_rounded),
+                  prefixIcon: const Icon(Icons.search_rounded, size: 18),
                   suffixIcon: IconButton(
                     tooltip: s.t('devices.palette'),
-                    icon: const Icon(Icons.keyboard_command_key_rounded),
+                    icon: const Icon(Icons.keyboard_command_key_rounded, size: 18),
                     onPressed: () => showCommandPalette(context),
                   ),
                 ),
@@ -154,7 +157,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
             const SizedBox(width: Gap.s),
             PopupMenuButton<String>(
               tooltip: s.t('devices.bookMenu'),
-              icon: const Icon(Icons.more_vert_rounded),
+              icon: const Icon(Icons.more_horiz_rounded),
               onSelected: (v) {
                 switch (v) {
                   case 'add':
@@ -173,54 +176,58 @@ class _DevicesScreenState extends State<DevicesScreen> {
             ),
           ],
         ),
-        SectionHeader(s.t('devices.lan'), trailing: _scanButton(lan, s)),
-        if (peers.isEmpty)
-          Card(
-            child: EmptyState(
-              icon: Icons.wifi_find_rounded,
-              title: s.t('devices.lan.empty'),
-              message: s.t('devices.lan.empty.hint'),
-            ),
-          )
-        else
-          for (final p in peers)
-            Padding(
-              padding: const EdgeInsets.only(bottom: Gap.s),
-              child: DeviceTile.lan(peer: p, onAction: (a) => _peerAction(p, a)),
-            ),
-        SectionHeader(s.t('devices.book')),
-        if (entries.isEmpty)
-          Card(
-            child: EmptyState(
-              icon: Icons.contacts_outlined,
-              title: q.isEmpty ? s.t('devices.book.empty') : s.t('devices.noMatches'),
-              message: q.isEmpty ? s.t('devices.book.empty.hint') : null,
-              action: q.isEmpty
-                  ? FilledButton.tonalIcon(
-                      onPressed: () => showAddDeviceDialog(context, book),
-                      icon: const Icon(Icons.add_rounded),
-                      label: Text(s.t('devices.add')),
-                    )
-                  : null,
-            ),
-          )
-        else
-          for (final e in entries)
-            Padding(
-              padding: const EdgeInsets.only(bottom: Gap.s),
-              child: DeviceTile.entry(
-                entry: e,
-                online: onNetwork.contains(e.id),
-                onAction: (a) => _entryAction(e, a),
-              ),
-            ),
+        const SizedBox(height: Gap.xl),
+        SettingsGroup(
+          title: s.t('devices.lan'),
+          trailing: _scanButton(lan, s),
+          children: [
+            if (peers.isEmpty)
+              EmptyState(
+                compact: true,
+                icon: Icons.wifi_find_rounded,
+                title: s.t('devices.lan.empty'),
+                message: s.t('devices.lan.empty.hint'),
+              )
+            else
+              for (final p in peers) DeviceTile.lan(peer: p, onAction: (a) => _peerAction(p, a)),
+          ],
+        ),
+        const SizedBox(height: Gap.xl),
+        SettingsGroup(
+          title: s.t('devices.book'),
+          children: [
+            if (entries.isEmpty)
+              EmptyState(
+                compact: true,
+                logo: q.isEmpty,
+                icon: Icons.contacts_outlined,
+                title: q.isEmpty ? s.t('devices.book.empty') : s.t('devices.noMatches'),
+                message: q.isEmpty ? s.t('devices.book.empty.hint') : null,
+                action: q.isEmpty
+                    ? FilledButton.icon(
+                        style: context.secondaryButton,
+                        onPressed: () => showAddDeviceDialog(context, book),
+                        icon: const Icon(Icons.add_rounded),
+                        label: Text(s.t('devices.add')),
+                      )
+                    : null,
+              )
+            else
+              for (final e in entries)
+                DeviceTile.entry(
+                  entry: e,
+                  online: onNetwork.contains(e.id),
+                  onAction: (a) => _entryAction(e, a),
+                ),
+          ],
+        ),
       ],
     );
   }
 
   Widget _scanButton(LanDiscovery lan, S s) => TextButton.icon(
         onPressed: lan.scanNow,
-        icon: const Icon(Icons.refresh_rounded, size: 18),
+        icon: const Icon(Icons.refresh_rounded, size: 16),
         label: Text(s.t('devices.scan')),
       );
 }

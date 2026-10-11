@@ -50,6 +50,18 @@ final Map<String, (String, String)> kConnectivityStrings = {
   'connect.viewOnly': ('Connect, view only', 'Подключиться только для просмотра'),
   'connect.reverse': ('Let them control this device', 'Дать им управлять этим устройством'),
   'connect.recent': ('Recent', 'Недавние'),
+  'connect.reverseShort': ('Reverse connection', 'Обратное подключение'),
+  'connect.field': ('ID, address, link or code…', 'ID, адрес, ссылка или код…'),
+
+  // --- home: setup card and devices grid ---
+  'setup.title': ('Setup needed', 'Требуется настройка'),
+  'home.devices.empty': ('No devices yet', 'Устройств пока нет'),
+  'home.devices.empty.hint': (
+    'Devices from your network and recent connections will appear here.',
+    'Здесь появятся устройства из вашей сети и недавние подключения.',
+  ),
+  'home.devices.online': ('Online', 'В сети'),
+  'home.devices.all': ('All devices', 'Все устройства'),
   'connect.offered': ('Offered control of this device.', 'Управление этим устройством предложено.'),
 
   // --- share access ---

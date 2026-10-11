@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import '../../ui/theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../file_transfer_endpoint.dart';
@@ -146,8 +148,7 @@ class TransferTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = FilesStrings.of(context);
-    final scheme = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final c = context.c;
     final t = transfer;
     final slash = t.name.lastIndexOf('/');
     final base = slash < 0 ? t.name : t.name.substring(slash + 1);
@@ -155,27 +156,15 @@ class TransferTile extends StatelessWidget {
 
     final failed = t.status == TransferStatus.failed;
     final done = t.status == TransferStatus.completed;
-    final running = t.isRunning;
-    const successLight = Color(0xFF1E9E63);
-    const successDark = Color(0xFF3DD68C);
-    final success = dark ? successDark : successLight;
-    final accent = failed ? scheme.error : (done ? success : scheme.primary);
+    final success = c.success;
+    final accent = failed ? c.danger : (done ? success : c.accent);
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOutCubic,
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      padding: const EdgeInsets.fromLTRB(12, 12, 6, 12),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: (failed ? scheme.error : (running && t.status == TransferStatus.active ? scheme.primary : scheme.outlineVariant))
-              .withValues(alpha: failed || (running && t.status == TransferStatus.active) ? 0.45 : 0.4),
-        ),
-        boxShadow: running
-            ? [BoxShadow(color: Colors.black.withValues(alpha: dark ? 0.28 : 0.07), blurRadius: 14, offset: const Offset(0, 4))]
-            : const [],
+        color: c.inset,
+        borderRadius: BorderRadius.circular(Radii.card),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

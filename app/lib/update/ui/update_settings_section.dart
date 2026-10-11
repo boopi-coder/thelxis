@@ -1,34 +1,45 @@
 import 'package:flutter/material.dart';
 
 import '../../ui/theme.dart';
+import '../../ui/widgets/rows.dart';
+import '../../ui/widgets/surface.dart';
 import '../update_service.dart';
 import 'update_links.dart';
 import 'update_strings.dart';
 
-/// Settings -> About block for updates: version, last check, "Check now",
-/// the two switches, current state / error and a link to the release notes.
+/// Settings -> Updates block: version, last check, "Check now", the two
+/// switches, current state / error and a link to the release notes.
 ///
-/// Renders inside its own [Card] like the other settings sections; pass
+/// Renders as its own [SettingsGroup] like the other settings sections; pass
 /// `card: false` to get the bare rows for embedding into an existing card.
 class UpdateSettingsSection extends StatelessWidget {
-  const UpdateSettingsSection({super.key, required this.service, this.card = true});
+  const UpdateSettingsSection({super.key, required this.service, this.card = true, this.title});
 
   final UpdateService service;
   final bool card;
+
+  /// Group heading (only with [card]).
+  final String? title;
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: service,
       builder: (context, _) {
-        final rows = _Rows(service: service, strings: UpdateStrings.of(context));
-        return card ? Card(clipBehavior: Clip.antiAlias, child: rows) : rows;
+        final rows = _Rows(service: service, strings: UpdateStrings.of(context)).build(context);
+        if (card) return SettingsGroup(title: title, children: rows);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (i, r) in rows.indexed) ...[if (i > 0) const Hairline(indent: 16), r],
+          ],
+        );
       },
     );
   }
 }
 
-class _Rows extends StatelessWidget {
+class _Rows {
   const _Rows({required this.service, required this.strings});
 
   final UpdateService service;
@@ -36,61 +47,51 @@ class _Rows extends StatelessWidget {
 
   bool get _checking => service.state == UpdateState.checking;
 
-  @override
-  Widget build(BuildContext context) {
+  List<Widget> build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final c = context.c;
     final error = service.error;
     final showError = error != null &&
         (service.state == UpdateState.error || service.errorPhase == UpdatePhase.check);
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ListTile(
-          leading: Icon(_statusIcon(context), color: _statusColor(context)),
-          title: Text(strings.version(service.currentVersion)),
-          subtitle: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: Text(_status(), key: ValueKey(_status())),
-          ),
-          trailing: _action(),
+    return [
+      SettingsRow(
+        icon: _statusIcon(context),
+        title: strings.version(service.currentVersion),
+        subtitle: _status(),
+        trailing: _action(context),
+      ),
+      if (showError)
+        SettingsRow(
+          icon: Icons.error_outline_rounded,
+          title: strings.errorMessage(error.kind),
+          titleColor: c.danger,
         ),
-        if (showError)
-          ListTile(
-            dense: true,
-            leading: Icon(Icons.error_outline_rounded, color: scheme.error),
-            title: Text(
-              strings.errorMessage(error.kind),
-              style: theme.textTheme.bodyMedium?.copyWith(color: scheme.error),
-            ),
-          ),
-        SwitchListTile(
-          secondary: const Icon(Icons.autorenew_rounded),
-          title: Text(strings.autoCheckTitle),
-          subtitle: Text(strings.autoCheckSubtitle),
-          value: service.autoCheck,
-          onChanged: service.setAutoCheck,
-        ),
-        SwitchListTile(
-          secondary: const Icon(Icons.download_done_rounded),
-          title: Text(strings.autoInstallTitle),
-          subtitle: Text(strings.autoInstallSubtitle),
-          value: service.autoInstall,
-          onChanged: service.autoCheck ? service.setAutoInstall : null,
-        ),
-        ListTile(
-          leading: const Icon(Icons.notes_rounded),
-          title: Text(strings.releaseNotes),
-          subtitle: Text(strings.releaseNotesSubtitle),
-          trailing: const Icon(Icons.open_in_new_rounded, size: 18),
-          onTap: () => openUpdateLink(service.notesUrl ?? latestReleaseUrl()),
-        ),
-      ],
-    );
+      SwitchRow(
+        icon: Icons.autorenew_rounded,
+        title: strings.autoCheckTitle,
+        subtitle: strings.autoCheckSubtitle,
+        value: service.autoCheck,
+        onChanged: service.setAutoCheck,
+      ),
+      SwitchRow(
+        icon: Icons.download_done_rounded,
+        title: strings.autoInstallTitle,
+        subtitle: strings.autoInstallSubtitle,
+        value: service.autoInstall,
+        onChanged: service.autoCheck ? service.setAutoInstall : null,
+      ),
+      SettingsRow(
+        icon: Icons.notes_rounded,
+        title: strings.releaseNotes,
+        subtitle: strings.releaseNotesSubtitle,
+        trailing: Icon(Icons.open_in_new_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
+        onTap: () => openUpdateLink(service.notesUrl ?? latestReleaseUrl()),
+      ),
+    ];
   }
 
-  Widget _action() {
+  Widget _action(BuildContext context) {
     final busy = _checking ||
         service.state == UpdateState.downloading ||
         service.state == UpdateState.verifying ||
@@ -99,19 +100,17 @@ class _Rows extends StatelessWidget {
     if (service.state == UpdateState.available && version != null) {
       return FilledButton(onPressed: service.downloadAndInstall, child: Text(strings.update));
     }
-    return FilledButton.tonal(
+    return FilledButton(
+      style: context.secondaryButton,
       onPressed: busy ? null : service.checkNow,
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 150),
-        child: _checking
-            ? const SizedBox(
-                key: ValueKey('spinner'),
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : Text(strings.checkNow, key: const ValueKey('label')),
-      ),
+      child: _checking
+          ? const SizedBox(
+              key: ValueKey('spinner'),
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Text(strings.checkNow, key: const ValueKey('label')),
     );
   }
 
@@ -155,26 +154,6 @@ class _Rows extends StatelessWidget {
         return Icons.system_update_alt_rounded;
       case UpdateState.idle:
         return Icons.info_outline_rounded;
-    }
-  }
-
-  Color? _statusColor(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    switch (service.state) {
-      case UpdateState.upToDate:
-        return context.status.good;
-      case UpdateState.error:
-        return scheme.error;
-      case UpdateState.available:
-      case UpdateState.downloading:
-      case UpdateState.verifying:
-      case UpdateState.ready:
-      case UpdateState.installing:
-      case UpdateState.manualInstallRequired:
-        return scheme.primary;
-      case UpdateState.checking:
-      case UpdateState.idle:
-        return null;
     }
   }
 }

@@ -57,7 +57,14 @@ Future<AppServices> _services({String language = 'en', ThemeMode theme = ThemeMo
 }
 
 void main() {
-  const sizes = [Size(360, 640), Size(420, 900), Size(800, 600), Size(1400, 900)];
+  const sizes = [
+    Size(360, 640),
+    Size(420, 900),
+    Size(800, 600),
+    Size(1100, 700),
+    Size(1400, 900),
+    Size(1920, 1080),
+  ];
 
   for (final lang in ['en', 'ru']) {
     for (final theme in [ThemeMode.dark, ThemeMode.light]) {
@@ -71,11 +78,21 @@ void main() {
 
           await tester.pumpWidget(ThelxisApp(services: services));
           await tester.pump(const Duration(milliseconds: 400));
-          expect(find.text(s.t('home.yourId').toUpperCase()), findsOneWidget);
+          expect(find.text(s.t('home.yourId')), findsOneWidget);
 
           for (final nav in ['nav.devices', 'nav.sessions', 'nav.settings', 'nav.home']) {
             final label = s.t(nav);
-            await tester.tap(find.text(label).first);
+            // Wide layouts list the sidebar first; on phones the bar is last
+            // (the pages carry same-named headings).
+            final entries = find.text(label);
+            await tester.tap(
+              size.width < 600
+                  ? entries.last
+                  : size.width < 1000
+                      ? find.byTooltip(label) // the icon rail has tooltips only
+                      : entries.first,
+            );
+            await tester.pump(const Duration(milliseconds: 50));
             await tester.pump(const Duration(milliseconds: 400));
             expect(tester.takeException(), isNull, reason: '$nav at $size');
           }
@@ -92,9 +109,10 @@ void main() {
     final services = await _services(language: 'ru');
     await tester.pumpWidget(ThelxisApp(services: services));
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('ВАШ THELXIS ID'), findsOneWidget);
+    expect(find.text('Ваш Thelxis ID'), findsOneWidget);
     expect(find.text('Поделиться доступом'), findsOneWidget);
-    expect(find.text('Приём подключений недоступен'), findsOneWidget);
+    // The pill on Home and the status row of the sidebar both say it.
+    expect(find.text('Приём подключений недоступен'), findsWidgets);
     expect(S.current.language, AppLanguage.russian);
     await tester.pumpWidget(const SizedBox());
     S.current = S.forLanguage(AppLanguage.english);
@@ -108,26 +126,30 @@ void main() {
     await tester.pumpWidget(ThelxisApp(services: services));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('Settings').first);
+    await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('Русский'));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Настройки'), findsWidgets);
-    expect(find.text('БЕЗОПАСНОСТЬ'), findsOneWidget);
+    expect(find.text('Безопасность'), findsOneWidget);
     expect(services.settings.language, 'ru');
     await tester.pumpWidget(const SizedBox());
     S.current = S.forLanguage(AppLanguage.english);
   });
 
-  testWidgets('the wide layout shows the extended rail with labels and the brand name', (tester) async {
+  testWidgets('the wide layout shows the sidebar with labels and the brand name', (tester) async {
     tester.view.physicalSize = const Size(1400, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final services = await _services();
     await tester.pumpWidget(ThelxisApp(services: services));
     await tester.pump(const Duration(milliseconds: 300));
-    final rail = tester.widget<NavigationRail>(find.byType(NavigationRail));
-    expect(rail.extended, isTrue);
     expect(find.text('Thelxis'), findsWidgets);
+    expect(tester.getSize(find.byKey(const ValueKey('sidebar'))).width, 220);
+    expect(find.byType(NavigationBar), findsNothing);
+    for (final label in ['Home', 'Devices', 'Sessions', 'Settings']) {
+      expect(find.text(label), findsWidgets);
+    }
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -142,8 +164,9 @@ void main() {
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await tester.sendKeyEvent(LogicalKeyboardKey.digit4);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('SECURITY'), findsOneWidget);
+    expect(find.text('Security'), findsOneWidget);
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
@@ -151,6 +174,19 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.textContaining('Jump to a device'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the medium layout is a 68 px icon rail; 1000+ gets the 220 px sidebar', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final services = await _services();
+    for (final (width, expected) in [(800.0, 68.0), (999.0, 68.0), (1000.0, 220.0)]) {
+      tester.view.physicalSize = Size(width, 700);
+      await tester.pumpWidget(ThelxisApp(services: services));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.getSize(find.byKey(const ValueKey('sidebar'))).width, expected, reason: '$width');
+      await tester.pumpWidget(const SizedBox());
+    }
   });
 
   test('address book fixture sanity', () async {

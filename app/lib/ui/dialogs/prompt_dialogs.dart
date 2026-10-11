@@ -39,12 +39,15 @@ class PeerCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(Gap.m),
       decoration: BoxDecoration(
-        color: t.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(14),
+        color: t.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         children: [
-          CircleAvatar(child: Icon(osIcon(peer.os))),
+          DecoratedBox(
+            decoration: BoxDecoration(color: context.c.surface, borderRadius: BorderRadius.circular(Radii.control)),
+            child: SizedBox(width: 36, height: 36, child: Icon(osIcon(peer.os), size: 20)),
+          ),
           const SizedBox(width: Gap.m),
           Expanded(
             child: Column(

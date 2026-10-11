@@ -2,6 +2,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../file_transfer_endpoint.dart';
+import '../../ui/theme.dart';
 import 'files_strings.dart';
 
 enum PickKind { files, folder }
@@ -116,10 +117,10 @@ class SendFilesMenuButton extends StatelessWidget {
             icon: const Icon(Icons.upload_rounded),
           );
         }
-        return FilledButton.tonalIcon(
+        return FilledButton.icon(
           onPressed: toggle,
-          style: FilledButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 16)),
-          icon: const Icon(Icons.upload_rounded, size: 20),
+          style: context.secondaryButton,
+          icon: const Icon(Icons.upload_rounded, size: 18),
           label: Text(s.send),
         );
       },

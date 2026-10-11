@@ -5,6 +5,8 @@ import '../../l10n/strings.dart';
 import '../../protocol/models.dart';
 import '../../session/touch_gestures.dart';
 import '../../session/viewer_session.dart';
+import '../theme.dart';
+import '../widgets/surface.dart';
 import 'connection_indicator.dart';
 import 'special_keys.dart';
 import 'view_controller.dart';
@@ -59,11 +61,7 @@ class SessionToolbar extends StatelessWidget {
     // Phones cannot fit every control in one row: the rest moves into a menu
     // so End and the keyboard button are always on screen.
     if (MediaQuery.sizeOf(context).width < 620) return _buildCompact(context, scheme);
-    return Material(
-      color: scheme.surfaceContainerHigh.withValues(alpha: 0.94),
-      elevation: 8,
-      shadowColor: Colors.black54,
-      borderRadius: BorderRadius.circular(28),
+    return _Pill(
       child: ListenableBuilder(
         listenable: Listenable.merge([session, view]),
         builder: (context, _) {
@@ -145,11 +143,7 @@ class SessionToolbar extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(left: 2),
                   child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: scheme.error,
-                      foregroundColor: scheme.onError,
-                      minimumSize: const Size(0, 40),
-                    ),
+                    style: context.dangerButton,
                     onPressed: onEnd,
                     icon: const Icon(Icons.call_end_rounded, size: 18),
                     label: Text(l.t('toolbar.end')),
@@ -164,11 +158,7 @@ class SessionToolbar extends StatelessWidget {
   }
 
   Widget _buildCompact(BuildContext context, ColorScheme scheme) {
-    return Material(
-      color: scheme.surfaceContainerHigh.withValues(alpha: 0.94),
-      elevation: 8,
-      shadowColor: Colors.black54,
-      borderRadius: BorderRadius.circular(28),
+    return _Pill(
       child: ListenableBuilder(
         listenable: Listenable.merge([session, view]),
         builder: (context, _) {
@@ -318,8 +308,8 @@ class SessionToolbar extends StatelessWidget {
                 IconButton.filled(
                   tooltip: l.t('toolbar.end'),
                   style: IconButton.styleFrom(
-                    backgroundColor: scheme.error,
-                    foregroundColor: scheme.onError,
+                    backgroundColor: context.c.danger,
+                    foregroundColor: Colors.white,
                   ),
                   icon: const Icon(Icons.call_end_rounded),
                   onPressed: onEnd,
@@ -436,15 +426,37 @@ class SessionToolbar extends StatelessWidget {
   }
 }
 
+/// The toolbar's neutral pill: opaque surface, hairline, one soft shadow (it
+/// floats over the video, so it is allowed one).
+class _Pill extends StatelessWidget {
+  const _Pill({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(Radii.pill + 4),
+        border: Border.all(color: c.border, width: hairlineOf(context)),
+        boxShadow: const [BoxShadow(color: Color(0x40000000), blurRadius: 12, offset: Offset(0, 3))],
+      ),
+      child: Material(type: MaterialType.transparency, child: child),
+    );
+  }
+}
+
 class _Divider extends StatelessWidget {
   const _Divider();
 
   @override
   Widget build(BuildContext context) => Container(
         width: 1,
-        height: 22,
+        height: 20,
         margin: const EdgeInsets.symmetric(horizontal: 4),
-        color: Theme.of(context).colorScheme.outlineVariant,
+        color: context.c.border,
       );
 }
 

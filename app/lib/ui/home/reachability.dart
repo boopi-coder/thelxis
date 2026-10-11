@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import '../../l10n/strings.dart';
 import '../../net/connectivity/connectivity.dart';
 import '../../net/discovery.dart';
+import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/hover_tint.dart';
 import 'reachability_advice.dart';
 
 /// What the pill on Home should say about incoming connectivity.
@@ -43,14 +45,12 @@ class ReachabilityPill extends StatelessWidget {
     required this.allowIncoming,
     required this.onWhy,
     this.upnpEnabled = true,
-    this.onGradient = false,
   });
 
   final Connectivity connectivity;
   final bool allowIncoming;
   final bool upnpEnabled;
   final VoidCallback onWhy;
-  final bool onGradient;
 
   @override
   Widget build(BuildContext context) {
@@ -69,14 +69,7 @@ class ReachabilityPill extends StatelessWidget {
           label: summary.label,
           tone: summary.tone,
           onTap: onWhy,
-          onGradient: onGradient,
-          trailing: Icon(
-            Icons.help_outline_rounded,
-            size: 16,
-            color: onGradient
-                ? Colors.white70
-                : Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+          trailing: Icon(Icons.help_outline_rounded, size: 14, color: context.c.textMuted),
         );
       },
     );
@@ -116,16 +109,16 @@ class ReachabilityHint extends StatelessWidget {
         ).hint(s);
         if (hint == null) return const SizedBox.shrink();
         return Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: InkWell(
+          padding: const EdgeInsets.only(top: 6),
+          child: HoverTint(
             key: const ValueKey('reach-hint'),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(6),
             onTap: onTap,
             child: Text(
               hint,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: color),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: color ?? context.c.textSecondary),
             ),
           ),
         );

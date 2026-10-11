@@ -7,6 +7,7 @@ import '../../l10n/strings.dart';
 import '../../net/connectivity/connectivity.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/rows.dart';
 
 /// The router instructions for the current manual forwarding settings:
 /// "On the router, forward TCP p1 -> ip:47100, UDP p2 -> ip:47100, TCP p3 ->
@@ -34,11 +35,11 @@ class ManualForwardingSection extends StatelessWidget {
     final connectivity = context.read<Connectivity>();
     return Column(
       children: [
-        SwitchListTile(
+        SwitchRow(
           key: const ValueKey('manual-fwd-switch'),
-          secondary: const Icon(Icons.alt_route_rounded),
-          title: Text(s.t('settings.manual')),
-          subtitle: Text(s.t('settings.manual.hint')),
+          icon: Icons.alt_route_rounded,
+          title: s.t('settings.manual'),
+          subtitle: s.t('settings.manual.hint'),
           value: st.manualForwardingEnabled,
           onChanged: st.setManualForwardingEnabled,
         ),
@@ -95,12 +96,11 @@ class ManualForwardingSection extends StatelessWidget {
                       st,
                       report.lanIPv4.isEmpty ? null : report.lanIPv4.first,
                     );
-                    final scheme = Theme.of(context).colorScheme;
                     return Container(
                       padding: const EdgeInsets.fromLTRB(Gap.m, Gap.s, Gap.xs, Gap.s),
                       decoration: BoxDecoration(
-                        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(12),
+                        color: context.c.inset,
+                        borderRadius: BorderRadius.circular(Radii.control),
                       ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,8 +222,6 @@ class _CommitFieldState extends State<_CommitField> {
         helperText: widget.helper,
         helperMaxLines: 2,
         errorText: _error,
-        border: const OutlineInputBorder(),
-        isDense: true,
       ),
       onSubmitted: (_) => _commit(),
     );

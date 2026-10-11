@@ -64,11 +64,11 @@ class SessionFilesPanelHost extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Material(
-      color: scheme.surfaceContainerLow,
-      elevation: 8,
-      borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)),
+      color: context.c.surface,
+      elevation: 4,
+      shadowColor: const Color(0x66000000),
+      borderRadius: const BorderRadius.horizontal(left: Radius.circular(Radii.card)),
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
         width: kFilesPanelWidth,

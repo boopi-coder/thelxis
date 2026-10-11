@@ -22,8 +22,13 @@ import 'package:thelxis/ui/home/reachability.dart';
 import 'package:thelxis/ui/home/reachability_advice.dart';
 import 'package:thelxis/ui/settings/manual_forwarding_section.dart';
 import 'package:thelxis/ui/widgets/common.dart';
+import 'package:thelxis/ui/widgets/rows.dart';
 
 import 'support/fakes.dart';
+
+/// The status pill on Home (the sidebar repeats the same words).
+Finder _pill(String label) =>
+    find.descendant(of: find.byType(StatusPill), matching: find.text(label));
 
 const _mapping = PortMapping(
   protocol: MappingProtocol.tcp,
@@ -272,7 +277,7 @@ void main() {
       final (_, net) = await pump(tester);
       net.publish(_report(gateway: true, cgnat: true, external: '100.72.1.9'));
       await tester.pump();
-      expect(find.text('LAN only'), findsOneWidget);
+      expect(_pill('LAN only'), findsOneWidget);
       expect(find.text('Your provider blocks incoming (CGNAT). Tap for options.'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('reach-hint')));
@@ -288,7 +293,7 @@ void main() {
       final (_, net) = await pump(tester);
       net.publish(_report());
       await tester.pump();
-      await tester.tap(find.text('LAN only'));
+      await tester.tap(_pill('LAN only'));
       await settle(tester);
       expect(find.byKey(const ValueKey('reach-advice')), findsOneWidget);
       expect(find.text('Reachable only inside your network'), findsOneWidget);
@@ -300,10 +305,10 @@ void main() {
       final (_, net) = await pump(tester);
       net.publish(_report(public: true, gateway: true, external: '203.0.113.9', mappings: [_mapping]));
       await tester.pump();
-      expect(find.text('Reachable from internet'), findsOneWidget);
+      expect(_pill('Reachable from internet'), findsOneWidget);
       expect(find.byKey(const ValueKey('reach-hint')), findsNothing);
 
-      await tester.tap(find.text('Reachable from internet'));
+      await tester.tap(_pill('Reachable from internet'));
       await settle(tester);
       expect(find.text('Reachable via your router (NAT-PMP)'), findsOneWidget);
       expect(find.text('What you can do'), findsNothing);
@@ -329,7 +334,7 @@ void main() {
       await services.settings.setUpnp(false);
       net.publish(_report());
       await tester.pump();
-      await tester.tap(find.text('LAN only'));
+      await tester.tap(_pill('LAN only'));
       await settle(tester);
       expect(find.text('Automatic port mapping is off'), findsOneWidget);
 
@@ -340,7 +345,7 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('reach-action-manualForwarding')));
       await settle(tester);
-      expect(find.text('CONNECTIVITY'), findsOneWidget, reason: 'lands on Settings');
+      expect(find.text('Connectivity'), findsOneWidget, reason: 'lands on Settings');
       expect(find.byKey(const ValueKey('manual-fwd-switch')), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
@@ -349,7 +354,7 @@ void main() {
       final (services, net) = await pump(tester);
       net.publish(_report(gateway: true, cgnat: true, external: '100.72.1.9'));
       await tester.pump();
-      expect(find.text('LAN only'), findsOneWidget);
+      expect(_pill('LAN only'), findsOneWidget);
 
       final gwId = (await tester.runAsync(() => Identity.fromSeed(List<int>.filled(32, 7))))!;
       services.lan.debugReply(
@@ -362,9 +367,9 @@ void main() {
         '192.168.1.2',
       );
       await tester.pump();
-      expect(find.text('Reachable from internet'), findsOneWidget);
+      expect(_pill('Reachable from internet'), findsOneWidget);
       expect(find.byKey(const ValueKey('reach-hint')), findsNothing);
-      await tester.tap(find.text('Reachable from internet'));
+      await tester.tap(_pill('Reachable from internet'));
       await settle(tester);
       expect(find.text('Reachable through office gateway Office GW'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
@@ -453,7 +458,8 @@ void main() {
       final (services, net) = (await tester.runAsync(_services))!;
       await tester.pumpWidget(ThelxisApp(services: services));
       await tester.pump(const Duration(milliseconds: 300));
-      await tester.tap(find.text('Settings').first);
+      // 900 px wide: the icon rail, whose entries are tooltips.
+      await tester.tap(find.byTooltip('Settings'));
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump(const Duration(milliseconds: 500));
       return (services, net);
@@ -471,7 +477,7 @@ void main() {
       expect(services.settings.officeGateway, isTrue);
       await services.settings.setAllowIncoming(false);
       await tester.pump();
-      expect(tester.widget<SwitchListTile>(find.byKey(const ValueKey('gateway-switch'))).onChanged, isNull);
+      expect(tester.widget<SwitchRow>(find.byKey(const ValueKey('gateway-switch'))).onChanged, isNull);
       await tester.pumpWidget(const SizedBox());
     });
 
@@ -486,7 +492,7 @@ void main() {
     testWidgets('public STUN is on by default and explains what it reveals', (tester) async {
       final (services, _) = await openSettings(tester);
       expect(services.settings.publicStun, isTrue);
-      final tile = tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Use public STUN servers'));
+      final tile = tester.widget<SwitchRow>(find.widgetWithText(SwitchRow, 'Use public STUN servers'));
       expect(tile.value, isTrue);
       expect(find.textContaining('never see your screen, files or any other data'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());

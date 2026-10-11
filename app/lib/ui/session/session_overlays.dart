@@ -26,8 +26,8 @@ class BusyOverlay extends StatelessWidget {
             margin: const EdgeInsets.all(Gap.xl),
             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 22),
             decoration: BoxDecoration(
-              color: t.colorScheme.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(20),
+              color: t.colorScheme.surface,
+              borderRadius: BorderRadius.circular(Radii.dialog),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -95,8 +95,8 @@ class EndedOverlay extends StatelessWidget {
             margin: const EdgeInsets.all(Gap.l),
             padding: const EdgeInsets.all(Gap.xl),
             decoration: BoxDecoration(
-              color: t.colorScheme.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(24),
+              color: t.colorScheme.surface,
+              borderRadius: BorderRadius.circular(Radii.dialog),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -162,8 +162,8 @@ class _PasswordPromptState extends State<PasswordPrompt> {
               margin: const EdgeInsets.all(Gap.l),
               padding: const EdgeInsets.all(Gap.xl),
               decoration: BoxDecoration(
-                color: t.colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(24),
+                color: t.colorScheme.surface,
+                borderRadius: BorderRadius.circular(Radii.dialog),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,

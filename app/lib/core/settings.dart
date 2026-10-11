@@ -110,10 +110,11 @@ class AppSettings extends ChangeNotifier {
     switch (_prefs.getString(_kTheme)) {
       case 'light':
         return ThemeMode.light;
-      case 'system':
-        return ThemeMode.system;
-      default:
+      case 'dark':
         return ThemeMode.dark;
+      default:
+        // Follows the OS until the user picks a theme in Settings.
+        return ThemeMode.system;
     }
   }
 

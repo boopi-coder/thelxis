@@ -129,7 +129,7 @@ void main() {
       expect(s.manualForwarding, isNull);
       expect(s.requireApproval, isFalse);
       expect(s.lanDiscovery, isTrue);
-      expect(s.themeMode, ThemeMode.dark);
+      expect(s.themeMode, ThemeMode.system);
       expect(s.hasPermanentPassword, isFalse);
       expect(s.defaultPermissions, const Permissions());
     });

@@ -133,10 +133,10 @@ class _PathBarState extends State<_PathBar> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
       child: Container(
-        height: 44,
+        height: 40,
         decoration: BoxDecoration(
           color: scheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           children: [
@@ -164,7 +164,7 @@ class _PathBarState extends State<_PathBar> {
                         child: Text(
                           c.label,
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                fontWeight: last ? FontWeight.w700 : FontWeight.w500,
+                                fontWeight: last ? FontWeight.w600 : FontWeight.w500,
                                 color: last ? scheme.onSurface : scheme.onSurfaceVariant,
                               ),
                         ),
@@ -306,8 +306,8 @@ class _EntryRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Material(
-        color: selected ? scheme.primaryContainer.withValues(alpha: 0.5) : Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
+        color: selected ? scheme.primaryContainer : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: tapOpens ? onOpen : onToggle,

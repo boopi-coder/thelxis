@@ -8,6 +8,8 @@ import '../update_exception.dart';
 class UpdateStrings {
   const UpdateStrings._(this.ru);
 
+  const UpdateStrings.english() : ru = false;
+
   factory UpdateStrings.of(BuildContext context) =>
       UpdateStrings._(Localizations.maybeLocaleOf(context)?.languageCode == 'ru');
 
@@ -24,6 +26,7 @@ class UpdateStrings {
         'Подписано ключом выпуска Thelxis.',
       );
   String get update => _t('Update', 'Обновить');
+  String get dismiss => _t('Dismiss', 'Скрыть');
   String get skip => _t('Skip', 'Пропустить');
   String get whatsNew => _t("What's new", 'Что нового');
   String get cancel => _t('Cancel', 'Отмена');

@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../ui/theme.dart';
+
 import '../file_transfer_endpoint.dart';
 import '../remote_path.dart';
 import 'file_icons.dart';
@@ -157,7 +159,8 @@ class _RemoteFilesTabState extends State<RemoteFilesTab> with AutomaticKeepAlive
         title: s.remoteError(_error!),
         action: _error == RemoteFsErrorKind.denied
             ? null
-            : FilledButton.tonal(
+            : FilledButton(
+                style: context.secondaryButton,
                 onPressed: () => _failedPath == null ? _start() : _open(_failedPath!),
                 child: Text(s.tryAgain),
               ),

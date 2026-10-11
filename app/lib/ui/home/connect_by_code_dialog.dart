@@ -364,8 +364,8 @@ class _CodeBox extends StatelessWidget {
         Container(
           padding: const EdgeInsets.fromLTRB(Gap.m, Gap.s, Gap.xs, Gap.s),
           decoration: BoxDecoration(
-            color: t.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
+            color: t.colorScheme.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(Radii.control),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
