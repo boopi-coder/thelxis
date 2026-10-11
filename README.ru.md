@@ -7,13 +7,13 @@
 **Удалённый рабочий стол без серверов. Прямое сквозное шифрование, компьютер - компьютер.**
 Без аккаунтов, без реле, без облака. Ключи шифрования есть только на ваших устройствах.
 
-[![macOS](https://img.shields.io/badge/macOS-12%2B-000000?logo=apple&logoColor=white)](#скачать)
-[![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4?logo=windows&logoColor=white)](#скачать)
-[![Linux](https://img.shields.io/badge/Linux-deb%20%7C%20tar.gz-fcc624?logo=linux&logoColor=black)](#скачать)
-[![Android](https://img.shields.io/badge/Android-7%2B-3ddc84?logo=android&logoColor=white)](#скачать)
-[![Лицензия](https://img.shields.io/badge/лицензия-MIT-22c55e)](LICENSE)
-[![Автор](https://img.shields.io/badge/сделано-boopi.site-7c3aed)](https://boopi.site)
-[![Boosty](https://img.shields.io/badge/Boosty-boopi__coder-f15f2c?logo=boosty&logoColor=white)](https://boosty.to/boopi_coder)
+[![macOS](docs/badges/macos-12-000000-f5bead.svg)](#скачать)
+[![Windows](docs/badges/windows-10-11-0078d4-93742f.svg)](#скачать)
+[![Linux](docs/badges/linux-deb-tar-gz-fcc624-bf98e6.svg)](#скачать)
+[![Android](docs/badges/android-7-3ddc84-3d6f35.svg)](#скачать)
+[![Лицензия](docs/badges/mit-22c55e-4b7d01.svg)](LICENSE)
+[![Автор](docs/badges/boopi-site-7c3aed-8d6596.svg)](https://boopi.site)
+[![Boosty](docs/badges/boosty-boopi-coder-f15f2c-268b6c.svg)](https://boosty.to/boopi_coder)
 
 [English](README.md) | **Русский**
 

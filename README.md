@@ -7,13 +7,13 @@
 **Remote desktop with no servers. Direct, end-to-end encrypted, PC to PC.**
 No accounts, no relays, no cloud. Encryption keys live only on your devices.
 
-[![macOS](https://img.shields.io/badge/macOS-12%2B-000000?logo=apple&logoColor=white)](#download)
-[![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4?logo=windows&logoColor=white)](#download)
-[![Linux](https://img.shields.io/badge/Linux-deb%20%7C%20tar.gz-fcc624?logo=linux&logoColor=black)](#download)
-[![Android](https://img.shields.io/badge/Android-7%2B-3ddc84?logo=android&logoColor=white)](#download)
-[![License](https://img.shields.io/badge/license-MIT-22c55e)](LICENSE)
-[![Made by](https://img.shields.io/badge/made%20by-boopi.site-7c3aed)](https://boopi.site)
-[![Boosty](https://img.shields.io/badge/Boosty-boopi__coder-f15f2c?logo=boosty&logoColor=white)](https://boosty.to/boopi_coder)
+[![macOS](docs/badges/macos-12-000000-f5bead.svg)](#download)
+[![Windows](docs/badges/windows-10-11-0078d4-93742f.svg)](#download)
+[![Linux](docs/badges/linux-deb-tar-gz-fcc624-bf98e6.svg)](#download)
+[![Android](docs/badges/android-7-3ddc84-3d6f35.svg)](#download)
+[![License](docs/badges/license-mit-22c55e-f2fbda.svg)](LICENSE)
+[![Made by](docs/badges/made-by-boopi-site-7c3aed-8bb6d2.svg)](https://boopi.site)
+[![Boosty](docs/badges/boosty-boopi-coder-f15f2c-268b6c.svg)](https://boosty.to/boopi_coder)
 
 **English** | [Русский](README.ru.md)
 
