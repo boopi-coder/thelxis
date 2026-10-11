@@ -15,6 +15,16 @@ const int kMaxClipboardBytes = 1 << 20;
 /// than killing the control channel.
 const int kMaxClipboardSendBytes = 200 * 1024;
 
+/// Where a session reads and writes clipboard text. Production uses the
+/// system clipboard; tests give each peer its own, because two peers in one
+/// process would otherwise share a single OS clipboard.
+class ClipboardAccess {
+  const ClipboardAccess({required this.read, required this.write});
+
+  final Future<String?> Function() read;
+  final Future<void> Function(String text) write;
+}
+
 /// Polls the system clipboard once per second and forwards changes, while
 /// suppressing the echo of text that was just received from the peer.
 class ClipboardSync {

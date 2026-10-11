@@ -64,7 +64,7 @@ jobs:
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/e2e"
           xvfb-run -a -s "-screen 0 1280x800x24" \
-            flutter test integration_test -d linux --reporter expanded 2>&1 | tee "$RUNNER_TEMP/e2e/test.log"
+            flutter test integration_test -d linux --reporter expanded -v 2>&1 | tee "$RUNNER_TEMP/e2e/test.log"
 
       - name: Upload logs
         if: failure()

@@ -41,9 +41,17 @@ class AuthPrompt {
 
 /// Settings and identity facts the viewer needs.
 class ViewerEnv {
-  const ViewerEnv({required this.settings, required this.userName, this.incomingDir});
+  const ViewerEnv({
+    required this.settings,
+    required this.userName,
+    this.incomingDir,
+    this.clipboard,
+  });
 
   final AppSettings settings;
+
+  /// Clipboard to sync; null means the system clipboard.
+  final ClipboardAccess? clipboard;
 
   /// Where files sent by the host land; null means `<Downloads>/Thelxis`.
   final Future<Directory> Function()? incomingDir;
@@ -63,6 +71,7 @@ class ViewerSession extends SessionBase {
     this.turn,
     this.turnHost,
     this._viewOnly = false,
+    this.relayOnly = false,
   }) {
     encoder = InputEncoder(_sendInput);
   }
@@ -71,6 +80,10 @@ class ViewerSession extends SessionBase {
   final SignalingChannel channel;
   final TurnInfo? turn;
   final NetAddress? turnHost;
+
+  /// Gather only relayed candidates: the media must go through the host's
+  /// embedded TURN.
+  final bool relayOnly;
 
   /// Remote video; initialised by [start].
   final RTCVideoRenderer renderer = RTCVideoRenderer();
@@ -149,6 +162,11 @@ class ViewerSession extends SessionBase {
   bool get isHost => false;
 
   Permissions? get permissions => _permissions;
+
+  /// The PeerConnection, for end-to-end tests that read its stats.
+  @visibleForTesting
+  RTCPeerConnection? get debugPeerConnection => _pc;
+
   List<DisplayInfo> get displays => _displays;
   String get activeDisplayId => _activeDisplay;
   QualityPreset get quality => _quality;
@@ -189,6 +207,7 @@ class ViewerSession extends SessionBase {
         turn: turn,
         turnHost: turnHost,
         publicStun: env.settings.publicStun,
+        relayOnly: relayOnly,
       ));
       _pc = pc;
       pc.onIceCandidate = _onLocalCandidate;
@@ -478,7 +497,11 @@ class ViewerSession extends SessionBase {
   }
 
   Future<void> _startClipboard() async {
-    _clipboard ??= ClipboardSync(onLocalChange: (t) => _sendControl(ClipboardMessage(t)));
+    _clipboard ??= ClipboardSync(
+      onLocalChange: (t) => _sendControl(ClipboardMessage(t)),
+      readClipboard: env.clipboard?.read,
+      writeClipboard: env.clipboard?.write,
+    );
     await _clipboard!.start();
   }
 

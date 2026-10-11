@@ -10,11 +10,14 @@ const String kPublicStunUrl = 'stun:stun.l.google.com:19302';
 ///   host it actually connected to ([turnHost]).
 /// * The listener uses no ICE servers.
 /// * A public STUN server is added only when the user opted in.
+/// * [relayOnly] restricts ICE to relayed candidates, i.e. forces the media
+///   through the listener's embedded TURN (diagnostics and tests).
 Map<String, dynamic> buildRtcConfiguration({
   required SignalingRole role,
   TurnInfo? turn,
   NetAddress? turnHost,
   bool publicStun = false,
+  bool relayOnly = false,
 }) {
   final servers = <Map<String, dynamic>>[];
   if (role == SignalingRole.dialer && turn != null && turnHost != null) {
@@ -40,6 +43,6 @@ Map<String, dynamic> buildRtcConfiguration({
     'iceServers': servers,
     'bundlePolicy': 'max-bundle',
     'sdpSemantics': 'unified-plan',
-    'iceTransportPolicy': 'all',
+    'iceTransportPolicy': relayOnly ? 'relay' : 'all',
   };
 }

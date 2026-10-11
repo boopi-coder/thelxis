@@ -47,6 +47,7 @@ class HostEnv {
     required this.onNotice,
     this.startCapture = ScreenCapture.start,
     this.incomingDir,
+    this.clipboard,
   });
 
   final AppSettings settings;
@@ -58,6 +59,9 @@ class HostEnv {
 
   /// Where files sent by the viewer land; null means `<Downloads>/Thelxis`.
   final Future<Directory> Function()? incomingDir;
+
+  /// Clipboard to sync; null means the system clipboard.
+  final ClipboardAccess? clipboard;
 
   /// Starts capturing a display; replaceable in tests.
   final Future<MediaStream> Function(HostDisplay display, List<HostDisplay> all, {int fps})
@@ -170,6 +174,10 @@ class HostSession extends SessionBase {
   bool get isHost => true;
 
   Permissions get permissions => _permissions;
+
+  /// The PeerConnection, for end-to-end tests that read its stats.
+  @visibleForTesting
+  RTCPeerConnection? get debugPeerConnection => _pc;
 
   /// True from the moment the screen is being captured for the viewer until
   /// capture has fully stopped. The session badge and banner stay visible for
@@ -646,7 +654,11 @@ class HostSession extends SessionBase {
   // --- clipboard & input -------------------------------------------------
 
   Future<void> _startClipboard() async {
-    _clipboard ??= ClipboardSync(onLocalChange: (text) => _send(ClipboardMessage(text)));
+    _clipboard ??= ClipboardSync(
+      onLocalChange: (text) => _send(ClipboardMessage(text)),
+      readClipboard: env.clipboard?.read,
+      writeClipboard: env.clipboard?.write,
+    );
     await _clipboard!.start();
   }
 

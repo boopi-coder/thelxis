@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show InternetAddress;
+import 'dart:io' show Directory, InternetAddress;
 
 import 'package:flutter/foundation.dart';
 
@@ -25,6 +25,7 @@ import '../platform/impl/android_host.dart';
 import '../protocol/models.dart';
 import '../protocol/signaling_messages.dart';
 import 'capture.dart';
+import 'clipboard_sync.dart';
 import 'host_credentials.dart';
 import 'host_session.dart';
 import 'prompts.dart';
@@ -71,6 +72,19 @@ class ConnectException implements Exception {
   String toString() => message;
 }
 
+/// Redirects the OS-facing parts of every session this manager creates.
+/// Production passes nothing; end-to-end tests give each peer its own incoming
+/// folder and clipboard, since two peers in one process share the OS ones.
+class SessionOverrides {
+  const SessionOverrides({this.incomingDir, this.clipboard});
+
+  /// Where received files land; null means `<Downloads>/Thelxis`.
+  final Future<Directory> Function()? incomingDir;
+
+  /// Clipboard to sync; null means the system clipboard.
+  final ClipboardAccess? clipboard;
+}
+
 /// Owns the listener, the dialer and every live session; turns network events
 /// and user actions into sessions and prompts.
 class SessionManager extends ChangeNotifier {
@@ -91,6 +105,7 @@ class SessionManager extends ChangeNotifier {
     this.onAttention,
     this.listenerPort = ThelxisPorts.signalingTcp,
     this.listenerAddress,
+    this.overrides = const SessionOverrides(),
   }) {
     this.listener = listener ??
         SignalingListener(
@@ -128,6 +143,7 @@ class SessionManager extends ChangeNotifier {
   /// ephemeral loopback port).
   final int listenerPort;
   final InternetAddress? listenerAddress;
+  final SessionOverrides overrides;
 
   late final SignalingListener listener;
   late final Dialer dialer;
@@ -189,11 +205,20 @@ class SessionManager extends ChangeNotifier {
         credentials: credentials,
         platform: platform,
         captures: captures,
+        incomingDir: overrides.incomingDir,
+        clipboard: overrides.clipboard,
         requestApproval: _requestApproval,
         onNotice: (title, message) {
           unawaited(prompts.push(WarningPrompt(title: title, message: message)));
           onAttention?.call();
         },
+      );
+
+  ViewerEnv get _viewerEnv => ViewerEnv(
+        settings: settings,
+        userName: settings.deviceName,
+        incomingDir: overrides.incomingDir,
+        clipboard: overrides.clipboard,
       );
 
   // --- lifecycle ---------------------------------------------------------
@@ -349,7 +374,7 @@ class SessionManager extends ChangeNotifier {
       return;
     }
     final session = ViewerSession(
-      env: ViewerEnv(settings: settings, userName: settings.deviceName),
+      env: _viewerEnv,
       peer: incoming.peer,
       sid: incoming.sid,
       channel: incoming.channel,
@@ -363,17 +388,23 @@ class SessionManager extends ChangeNotifier {
   // --- outgoing ----------------------------------------------------------
 
   /// Connects to [target] as the controlling side and returns the running
-  /// session. Throws [ConnectException].
-  Future<ViewerSession> connect(ConnectTarget target, {bool viewOnly = false}) async {
+  /// session. [relayOnly] forces the media through the host's embedded TURN.
+  /// Throws [ConnectException].
+  Future<ViewerSession> connect(
+    ConnectTarget target, {
+    bool viewOnly = false,
+    bool relayOnly = false,
+  }) async {
     final dial = await _dialVerified(target, HelloWant.control);
     final session = ViewerSession(
-      env: ViewerEnv(settings: settings, userName: settings.deviceName),
+      env: _viewerEnv,
       peer: dial.peer,
       sid: dial.sid,
       channel: dial.channel,
       turn: dial.turn,
       turnHost: dial.connectedTo,
       viewOnly: viewOnly,
+      relayOnly: relayOnly,
     );
     _track(session);
     _viewers.add(session);
