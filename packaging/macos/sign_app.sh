@@ -59,7 +59,9 @@ codesign --verify --deep --strict --verbose=2 "$app"
 echo "--- designated requirement"
 dr="$(codesign -dr - "$app" 2>&1 | grep -E '^(# )?designated' || true)"
 echo "$dr"
-if [ "$identity" != "-" ] && ! printf '%s' "$dr" | grep -q 'certificate leaf'; then
+# A self-signed certificate is its own root, so codesign may express the anchor
+# as either "certificate leaf" or "certificate root" — both pin our cert.
+if [ "$identity" != "-" ] && ! printf '%s' "$dr" | grep -qE 'certificate (leaf|root) = H"'; then
   echo "error: designated requirement is not anchored to the signing certificate" >&2
   exit 1
 fi

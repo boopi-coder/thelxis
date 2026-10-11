@@ -157,10 +157,23 @@ jobs:
         if: steps.signing.outputs.signed == 'true'
         run: |
           set -euo pipefail
+          # SHA-256 of the release certificate (public). Updates only install over an
+          # APK signed with the same key, so a mismatch here must stop the build.
+          expected="4dfee2f9039718dd7b61c8f108ddfcf066201b6f898f4787ea80466fa849bf9b"
           build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           for apk in "$GITHUB_WORKSPACE"/dist/*.apk; do
-            echo "== $apk"
-            "$build_tools/apksigner" verify --print-certs "$apk" | grep -E 'Signer #1 certificate (DN|SHA-256)'
+            echo "== $(basename "$apk")"
+            if ! out="$("$build_tools/apksigner" verify --verbose --print-certs "$apk" 2>&1)"; then
+              echo "$out"
+              echo "::error::apksigner verify failed for $(basename "$apk")"
+              exit 1
+            fi
+            printf '%s\n' "$out" | grep -iE '^Verified using|certificate DN' || true
+            digest="$(printf '%s\n' "$out" | grep -i 'certificate SHA-256 digest' | head -n 1 | sed 's/.*: *//' | tr -d ' :' | tr 'A-F' 'a-f')"
+            if [ "$digest" != "$expected" ]; then
+              echo "::error::$(basename "$apk") is signed with an unexpected certificate (${digest:-none})"
+              exit 1
+            fi
           done
 
       - uses: actions/upload-artifact@v7
