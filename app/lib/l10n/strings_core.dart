@@ -194,5 +194,6 @@ final Map<String, (String, String)> kCoreStrings = {
   // --- link path labels ---
   'path.lan': ('LAN', 'Локальная сеть'),
   'path.direct': ('Direct', 'Напрямую'),
+  'path.gateway': ('Via gateway', 'Через шлюз'),
   'path.relay': ('Via host TURN', 'Через TURN хоста'),
 };

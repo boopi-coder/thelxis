@@ -304,15 +304,26 @@ void main() {
       });
       await tester.pumpWidget(host(FileTransferPanel(rig.viewer)));
       await tester.tap(find.text('Remote files'));
-      await settle(tester);
+      // Wait for the roots + listing round trip to land instead of a fixed
+      // number of frames: under CI load the real I/O takes arbitrarily long.
+      await settle(tester, until: () => find.text('Docs').evaluate().isNotEmpty);
+      // Also let the tab slide and the list cross-fade finish (fake time), or
+      // the row is still moving and the tap misses it.
+      await tester.pumpAndSettle();
 
-      expect(find.text('Docs'), findsWidgets);
       await tester.tap(find.text('Docs').last);
-      await settle(tester);
+      await settle(tester, until: () => find.text('inner.pdf').evaluate().isNotEmpty);
+      await tester.pumpAndSettle();
       expect(find.text('inner.pdf'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Up'));
-      await settle(tester);
+      // The old listing stays on screen while the parent loads, so "gone" must
+      // also mean the spinner finished and the parent listing is shown.
+      await settle(tester, until: () =>
+          find.text('inner.pdf').evaluate().isEmpty &&
+          find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+          find.text('Docs').evaluate().isNotEmpty);
+      await tester.pumpAndSettle();
       expect(find.text('inner.pdf'), findsNothing);
       expect(find.text('Docs'), findsWidgets);
     });

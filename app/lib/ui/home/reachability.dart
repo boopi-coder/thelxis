@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../l10n/strings.dart';
 import '../../net/connectivity/connectivity.dart';
+import '../../net/discovery.dart';
 import '../widgets/common.dart';
 import 'reachability_advice.dart';
 
@@ -20,10 +22,16 @@ ReachabilitySummary summarizeReachability({
   required bool allowIncoming,
   required ReachabilityReport report,
   bool upnpEnabled = true,
+  String? gatewayName,
   S? strings,
 }) {
   final s = strings ?? S.current;
-  final advice = adviseReachability(allowIncoming: allowIncoming, report: report, upnpEnabled: upnpEnabled);
+  final advice = adviseReachability(
+    allowIncoming: allowIncoming,
+    report: report,
+    upnpEnabled: upnpEnabled,
+    gatewayName: gatewayName,
+  );
   return ReachabilitySummary(advice.label(s), advice.tone, advice.body(s));
 }
 
@@ -46,6 +54,7 @@ class ReachabilityPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final gatewayName = context.watch<LanDiscovery>().gateways.firstOrNull?.name;
     return ValueListenableBuilder<ReachabilityReport>(
       valueListenable: connectivity.report,
       builder: (context, report, _) {
@@ -53,6 +62,7 @@ class ReachabilityPill extends StatelessWidget {
           allowIncoming: allowIncoming,
           report: report,
           upnpEnabled: upnpEnabled,
+          gatewayName: gatewayName,
           strings: context.s,
         );
         return StatusPill(
@@ -93,6 +103,7 @@ class ReachabilityHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final gatewayName = context.watch<LanDiscovery>().gateways.firstOrNull?.name;
     return ValueListenableBuilder<ReachabilityReport>(
       valueListenable: connectivity.report,
       builder: (context, report, _) {
@@ -101,6 +112,7 @@ class ReachabilityHint extends StatelessWidget {
           allowIncoming: allowIncoming,
           report: report,
           upnpEnabled: upnpEnabled,
+          gatewayName: gatewayName,
         ).hint(s);
         if (hint == null) return const SizedBox.shrink();
         return Padding(

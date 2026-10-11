@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -71,4 +72,81 @@ RTCDegradationPreference degradationFor(String wire) {
     default:
       return RTCDegradationPreference.BALANCED;
   }
+}
+
+/// Resolves when ICE gathering of [pc] is complete, or after [timeout].
+/// Create it before `setLocalDescription` (which starts gathering) so the
+/// state change cannot be missed.
+class IceGatheringWatch {
+  IceGatheringWatch(this._pc) {
+    _previous = _pc.onIceGatheringState;
+    _pc.onIceGatheringState = (state) {
+      _previous?.call(state);
+      if (state == RTCIceGatheringState.RTCIceGatheringStateComplete) _check();
+    };
+  }
+
+  final RTCPeerConnection _pc;
+  void Function(RTCIceGatheringState state)? _previous;
+  final Completer<void> _done = Completer<void>();
+
+  void _check() {
+    if (!_done.isCompleted) _done.complete();
+  }
+
+  /// Waits for completion (at most [timeout]) and restores the previous
+  /// handler. Gathering that is still running at the timeout is simply cut
+  /// off: the candidates found so far are in the description.
+  Future<void> complete({Duration timeout = const Duration(seconds: 5)}) async {
+    if (_pc.iceGatheringState == RTCIceGatheringState.RTCIceGatheringStateComplete) _check();
+    try {
+      await _done.future.timeout(timeout);
+    } on TimeoutException {
+      // Use what we have.
+    } finally {
+      _pc.onIceGatheringState = _previous;
+    }
+  }
+}
+
+/// The parts of the controlled side's PeerConnection (PROTOCOL.md section 5):
+/// the screen transceiver and the three data channels. Shared by normal
+/// sessions and by connection-code offers, which are built before any viewer
+/// is known.
+class HostPeerParts {
+  HostPeerParts({
+    required this.pc,
+    required this.sender,
+    required this.control,
+    required this.input,
+    required this.files,
+  });
+
+  final RTCPeerConnection pc;
+  final RTCRtpSender sender;
+  final RTCDataChannel control;
+  final RTCDataChannel input;
+  final RTCDataChannel files;
+}
+
+Future<HostPeerParts> createHostPeerConnection(Map<String, dynamic> config) async {
+  final pc = await createPeerConnection(config);
+  MediaStream? tag;
+  try {
+    // A stream id in the SDP lets the viewer attach the track to a stream.
+    tag = await createLocalMediaStream('thelxis-screen');
+  } on Object {
+    // Not essential: the viewer wraps a stream-less track itself.
+  }
+  final tx = await pc.addTransceiver(
+    kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
+    init: RTCRtpTransceiverInit(
+      direction: TransceiverDirection.SendOnly,
+      streams: tag == null ? null : [tag],
+    ),
+  );
+  final control = await pc.createDataChannel('control', RTCDataChannelInit()..ordered = true);
+  final input = await pc.createDataChannel('input', RTCDataChannelInit()..ordered = true);
+  final files = await pc.createDataChannel('files', RTCDataChannelInit()..ordered = true);
+  return HostPeerParts(pc: pc, sender: tx.sender, control: control, input: input, files: files);
 }

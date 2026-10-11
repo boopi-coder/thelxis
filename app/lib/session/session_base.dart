@@ -156,8 +156,12 @@ class StatsPoller {
     required this.fetch,
     required this.target,
     this.interval = const Duration(seconds: 1),
+    this.viaGateway = false,
   });
 
+  /// The media goes through an office gateway's relay: a relayed path is then
+  /// reported as [LinkPath.gateway].
+  final bool viaGateway;
   final Future<List<StatEntry>> Function() fetch;
   final ValueNotifier<LinkStats> target;
   final Duration interval;
@@ -181,10 +185,11 @@ class StatsPoller {
     _busy = true;
     try {
       final reports = await fetch();
-      target.value = _sampler.update(
+      final sample = _sampler.update(
         reports,
         nowMs: _clock.elapsedMilliseconds.toDouble(),
       );
+      target.value = viaGateway && sample.path == LinkPath.relay ? sample.withPath(LinkPath.gateway) : sample;
     } on Object {
       // A failed poll just skips one sample; the link state is shown elsewhere.
     } finally {

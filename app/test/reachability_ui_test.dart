@@ -147,10 +147,31 @@ void main() {
       }
     });
 
+    test('an office gateway on the network makes a device reachable, unless it is reachable by itself', () {
+      ReachAdvice adv(ReachabilityReport r, {String? gw, bool incoming = true}) =>
+          adviseReachability(allowIncoming: incoming, report: r, gatewayName: gw);
+      for (final r in [_report(), _report(gateway: true, cgnat: true, external: '100.72.1.9'), _report(gateway: true, public: true, external: '203.0.113.9')]) {
+        final a = adv(r, gw: 'Office GW');
+        expect(a.kind, ReachKind.gateway, reason: '$r');
+        expect(a.reachable, isTrue);
+        expect(a.tone, PillTone.good);
+        expect(a.title(S.forLanguage(AppLanguage.english)), 'Reachable through office gateway Office GW');
+        expect(a.title(S.forLanguage(AppLanguage.russian)), 'Доступно через офисный шлюз Office GW');
+        expect(a.hint(S.forLanguage(AppLanguage.english)), isNull);
+      }
+      expect(adv(_report(public: true, direct: true, external: '203.0.113.9'), gw: 'Office GW').kind, ReachKind.direct);
+      expect(adv(_report(manual: true), gw: 'Office GW').kind, ReachKind.manual);
+      expect(adv(_report(v6: ['2001:db8::1']), gw: 'Office GW').kind, ReachKind.ipv6);
+      expect(adv(_report(), gw: 'Office GW', incoming: false).kind, ReachKind.off);
+      expect(adv(_report(listening: false), gw: 'Office GW').kind, ReachKind.portInUse);
+    });
+
     test('CGNAT advice names the ways around it', () {
       final en = S.forLanguage(AppLanguage.english);
       final steps = const ReachAdvice(ReachKind.cgnat).steps(en).join('\n');
-      expect(steps, allOf(contains('Connect by code'), contains('0.2'), contains('Let them control this device'), contains('IPv6')));
+      expect(steps, allOf(contains('Connect by code'), contains('Let them control this device'), contains('IPv6')));
+      expect(steps, isNot(contains('0.2')), reason: 'connect by code is here now');
+      expect(const ReachAdvice(ReachKind.cgnat).actions.first, AdviceAction.connectByCode);
       final ru = S.forLanguage(AppLanguage.russian);
       final stepsRu = const ReachAdvice(ReachKind.cgnat).steps(ru).join('\n');
       expect(stepsRu, allOf(contains('по коду'), contains('IPv6')));
@@ -257,7 +278,8 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('reach-hint')));
       await settle(tester);
       expect(find.text('Your provider blocks incoming connections'), findsOneWidget);
-      expect(find.textContaining('Connect by code (coming in version 0.2)'), findsOneWidget);
+      expect(find.textContaining('Connect by code'), findsWidgets);
+      expect(find.byKey(const ValueKey('reach-action-connectByCode')), findsOneWidget);
       expect(find.textContaining('Let them control this device'), findsWidgets);
       await tester.pumpWidget(const SizedBox());
     });
@@ -323,6 +345,31 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
+    testWidgets('a gateway seen on the network turns "LAN only" into reachable, with its name', (tester) async {
+      final (services, net) = await pump(tester);
+      net.publish(_report(gateway: true, cgnat: true, external: '100.72.1.9'));
+      await tester.pump();
+      expect(find.text('LAN only'), findsOneWidget);
+
+      final gwId = (await tester.runAsync(() => Identity.fromSeed(List<int>.filled(32, 7))))!;
+      services.lan.debugReply(
+        buildHere(
+          identity: gwId,
+          info: const LocalPeerInfo(name: 'Office GW', os: 'windows', app: '0.2.0'),
+          port: 47100,
+          gatewayAddresses: ['203.0.113.5:47100'],
+        ),
+        '192.168.1.2',
+      );
+      await tester.pump();
+      expect(find.text('Reachable from internet'), findsOneWidget);
+      expect(find.byKey(const ValueKey('reach-hint')), findsNothing);
+      await tester.tap(find.text('Reachable from internet'));
+      await settle(tester);
+      expect(find.text('Reachable through office gateway Office GW'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('Russian advice', (tester) async {
       final (services, net) = await pump(tester);
       await services.settings.setLanguage('ru');
@@ -332,7 +379,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('reach-hint')));
       await settle(tester);
       expect(find.text('Провайдер блокирует входящие подключения'), findsOneWidget);
-      expect(find.textContaining('Подключение по коду'), findsOneWidget);
+      expect(find.textContaining('Подключение по коду'), findsWidgets);
       await tester.pumpWidget(const SizedBox());
     });
   });
@@ -413,6 +460,28 @@ void main() {
     }
 
     Finder field(String key) => find.descendant(of: find.byKey(ValueKey(key)), matching: find.byType(TextField));
+
+    testWidgets('the Office gateway switch is off by default, saves, and needs incoming connections', (tester) async {
+      final (services, _) = await openSettings(tester);
+      expect(services.settings.officeGateway, isFalse);
+      expect(find.text('Office gateway'), findsOneWidget);
+      expect(find.textContaining('this PC only sees ciphertext'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('gateway-switch')));
+      await tester.pump();
+      expect(services.settings.officeGateway, isTrue);
+      await services.settings.setAllowIncoming(false);
+      await tester.pump();
+      expect(tester.widget<SwitchListTile>(find.byKey(const ValueKey('gateway-switch'))).onChanged, isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('Russian gateway text', (tester) async {
+      final (services, _) = await openSettings(tester);
+      await services.settings.setLanguage('ru');
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Офисный шлюз'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
 
     testWidgets('public STUN is on by default and explains what it reveals', (tester) async {
       final (services, _) = await openSettings(tester);

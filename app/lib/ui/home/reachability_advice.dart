@@ -22,6 +22,10 @@ enum ReachKind {
   /// Only a global IPv6 address.
   ipv6,
 
+  /// Not reachable directly, but an office gateway on this network (PROTOCOL.md
+  /// section 11) lets outside viewers in.
+  gateway,
+
   /// The router's own address is a shared provider address (carrier-grade NAT).
   cgnat,
 
@@ -39,22 +43,25 @@ enum ReachKind {
 }
 
 /// What the user can do about it, as buttons next to the advice.
-enum AdviceAction { enableIncoming, enableMapping, manualForwarding, reverseConnection, rescan }
+enum AdviceAction { enableIncoming, enableMapping, manualForwarding, reverseConnection, connectByCode, rescan }
 
 /// Plain-language status for the current [ReachabilityReport] and the next
 /// steps for the user. Texts are short on purpose: a title, one sentence,
 /// at most three steps.
 class ReachAdvice {
-  const ReachAdvice(this.kind, {this.method});
+  const ReachAdvice(this.kind, {this.method, this.gatewayName});
 
   final ReachKind kind;
 
   /// "UPnP" / "NAT-PMP" / "PCP" for [ReachKind.mapped].
   final String? method;
 
+  /// The office gateway's name for [ReachKind.gateway].
+  final String? gatewayName;
+
   /// A peer on the internet can most likely connect.
   bool get reachable => switch (kind) {
-        ReachKind.direct || ReachKind.mapped || ReachKind.manual || ReachKind.ipv6 => true,
+        ReachKind.direct || ReachKind.mapped || ReachKind.manual || ReachKind.ipv6 || ReachKind.gateway => true,
         _ => false,
       };
 
@@ -67,8 +74,12 @@ class ReachAdvice {
   List<AdviceAction> get actions => switch (kind) {
         ReachKind.off => const [AdviceAction.enableIncoming],
         ReachKind.portInUse => const [AdviceAction.rescan],
-        ReachKind.cgnat => const [AdviceAction.reverseConnection],
-        ReachKind.doubleNat => const [AdviceAction.manualForwarding, AdviceAction.reverseConnection],
+        ReachKind.cgnat => const [AdviceAction.connectByCode, AdviceAction.reverseConnection],
+        ReachKind.doubleNat => const [
+            AdviceAction.manualForwarding,
+            AdviceAction.connectByCode,
+            AdviceAction.reverseConnection,
+          ],
         ReachKind.mappingFailed => const [AdviceAction.manualForwarding, AdviceAction.rescan],
         ReachKind.mappingOff => const [AdviceAction.enableMapping, AdviceAction.manualForwarding],
         ReachKind.noRouter => const [
@@ -83,7 +94,7 @@ class ReachAdvice {
   String label(S s) => switch (kind) {
         ReachKind.off => s.t('reach.off'),
         ReachKind.portInUse => s.t('reach.noListener'),
-        ReachKind.direct || ReachKind.mapped || ReachKind.manual || ReachKind.ipv6 => s.t('reach.internet'),
+        ReachKind.direct || ReachKind.mapped || ReachKind.manual || ReachKind.ipv6 || ReachKind.gateway => s.t('reach.internet'),
         _ => s.t('reach.lan'),
       };
 
@@ -94,6 +105,7 @@ class ReachAdvice {
         ReachKind.mapped => s.t('reach.mapped.title', {'method': method ?? 'UPnP'}),
         ReachKind.manual => s.t('reach.manual.title'),
         ReachKind.ipv6 => s.t('reach.ipv6.title'),
+        ReachKind.gateway => s.t('reach.gateway.title', {'name': gatewayName ?? ''}),
         ReachKind.cgnat => s.t('reach.cgnat.title'),
         ReachKind.doubleNat => s.t('reach.doubleNat.title'),
         ReachKind.mappingFailed => s.t('reach.mappingFailed.title'),
@@ -109,6 +121,7 @@ class ReachAdvice {
         ReachKind.mapped => s.t('reach.mapped.body'),
         ReachKind.manual => s.t('reach.manual.body'),
         ReachKind.ipv6 => s.t('reach.ipv6.body'),
+        ReachKind.gateway => s.t('reach.gateway.body', {'name': gatewayName ?? ''}),
         ReachKind.cgnat => s.t('reach.cgnat.body'),
         ReachKind.doubleNat => s.t('reach.doubleNat.body'),
         ReachKind.mappingFailed => s.t('reach.mappingFailed.body'),
@@ -149,6 +162,7 @@ ReachAdvice adviseReachability({
   required bool allowIncoming,
   required ReachabilityReport report,
   bool upnpEnabled = true,
+  String? gatewayName,
 }) {
   if (!allowIncoming) return const ReachAdvice(ReachKind.off);
   if (!report.listening) return const ReachAdvice(ReachKind.portInUse);
@@ -158,6 +172,7 @@ ReachAdvice adviseReachability({
     return ReachAdvice(ReachKind.mapped, method: _methodName(report.mappingMethod));
   }
   if (report.reachableIPv6) return const ReachAdvice(ReachKind.ipv6);
+  if (gatewayName != null) return ReachAdvice(ReachKind.gateway, gatewayName: gatewayName);
   if (report.cgnat) {
     return ReachAdvice(_isPrivateRfc1918(report.externalIPv4) ? ReachKind.doubleNat : ReachKind.cgnat);
   }

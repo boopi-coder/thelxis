@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/address_book.dart';
+import '../../net/connect_code.dart';
 import '../../net/connect_target.dart';
+import 'connect_by_code_dialog.dart';
 import '../connect_actions.dart';
 import '../shell_controller.dart';
 import '../theme.dart';
@@ -48,6 +50,13 @@ class _ConnectCardState extends State<ConnectCard> {
   }
 
   Future<void> _go({bool viewOnly = false, bool reverse = false}) async {
+    // A pasted connection code goes to its own flow.
+    if (looksLikeConnectionCode(_controller.text)) {
+      final code = _controller.text;
+      _controller.clear();
+      await showConnectByCodeDialog(context, initialCode: code);
+      return;
+    }
     final parsed = parseConnectInput(_controller.text);
     if (!parsed.isOk) {
       setState(() => _error = parsed.error);
@@ -148,13 +157,26 @@ class _ConnectCardState extends State<ConnectCard> {
                   tooltip: s.t('connect.more'),
                   enabled: !_busy,
                   icon: const Icon(Icons.more_vert_rounded),
-                  onSelected: (v) => _go(viewOnly: v == 'view', reverse: v == 'reverse'),
+                  onSelected: (v) => v == 'code'
+                      ? showConnectByCodeDialog(context)
+                      : _go(viewOnly: v == 'view', reverse: v == 'reverse'),
                   itemBuilder: (_) => [
                     PopupMenuItem(value: 'view', child: Text(s.t('connect.viewOnly'))),
                     PopupMenuItem(value: 'reverse', child: Text(s.t('connect.reverse'))),
+                    PopupMenuItem(value: 'code', child: Text(s.t('code.title'))),
                   ],
                 ),
               ],
+            ),
+            const SizedBox(height: Gap.xs),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const ValueKey('connect-by-code'),
+                onPressed: _busy ? null : () => showConnectByCodeDialog(context),
+                icon: const Icon(Icons.vpn_key_outlined, size: 18),
+                label: Text(s.t('code.title')),
+              ),
             ),
             AnimatedSize(
               duration: const Duration(milliseconds: 220),

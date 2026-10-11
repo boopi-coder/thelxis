@@ -5,7 +5,7 @@ import 'net_address.dart';
 /// What the user asked to connect to, parsed from the Connect field, an
 /// invite link or a command-palette entry (PROTOCOL.md section 3).
 class ConnectTarget {
-  const ConnectTarget({this.id, this.name, this.addresses = const []});
+  const ConnectTarget({this.id, this.name, this.addresses = const [], this.gateways = const []});
 
   /// Expected Thelxis ID (normalised); null for a bare address (TOFU).
   final String? id;
@@ -13,6 +13,11 @@ class ConnectTarget {
   /// Display name hint from an invite link.
   final String? name;
   final List<NetAddress> addresses;
+
+  /// Office gateways that can reach this device (`g=` of an invite, PROTOCOL.md
+  /// sections 3 and 11). Only used together with [id]: through a gateway the
+  /// device's ID must be verified.
+  final List<NetAddress> gateways;
 
   bool get hasId => id != null;
 
@@ -33,7 +38,7 @@ class ConnectParseResult {
 
 
 /// Accepted forms:
-/// * `thelxis://connect?id=<ID>&n=<name>&a=<addr>,<addr>`
+/// * `thelxis://connect?id=<ID>&n=<name>&a=<addr>,<addr>[&g=<gateway>,…]`
 /// * `ID@host[:port]` (also `ID@[v6]:port`, several comma-separated addresses)
 /// * `host[:port]` / `[v6]:port` (trust on first use)
 /// * a bare Thelxis ID (resolved through the address book / LAN)
@@ -94,11 +99,13 @@ ConnectParseResult _parseInvite(String text) {
     return ConnectParseResult.error(S.current.t('parse.inviteNoId'));
   }
   final a = uri.queryParameters['a'] ?? '';
+  final g = uri.queryParameters['g'] ?? '';
   final name = uri.queryParameters['n'];
   return ConnectParseResult.ok(ConnectTarget(
     id: id,
     name: (name == null || name.trim().isEmpty) ? null : name.trim(),
     addresses: parseAddressList(a.split(',')),
+    gateways: parseAddressList(g.split(',')),
   ));
 }
 
@@ -107,11 +114,13 @@ String buildInviteLink({
   required String id,
   required String name,
   required List<String> addresses,
+  List<String> gateways = const [],
 }) {
   final parts = <String>[
     'id=$id',
     'n=${Uri.encodeComponent(name)}',
     if (addresses.isNotEmpty) 'a=${_encodeAddresses(addresses)}',
+    if (gateways.isNotEmpty) 'g=${_encodeAddresses(gateways)}',
   ];
   return 'thelxis://connect?${parts.join('&')}';
 }

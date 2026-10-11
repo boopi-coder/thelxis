@@ -15,6 +15,7 @@ class AddressBookEntry {
     this.key,
     this.os = 'unknown',
     List<String>? addresses,
+    List<String>? gateways,
     this.alias = '',
     this.favorite = false,
     List<String>? tags,
@@ -22,6 +23,7 @@ class AddressBookEntry {
     this.lastSeen,
     this.lastConnected,
   })  : addresses = addresses ?? [],
+        gateways = gateways ?? [],
         tags = tags ?? [];
 
   /// Normalised 16-character Thelxis ID.
@@ -32,6 +34,10 @@ class AddressBookEntry {
   String? key;
   String os;
   List<String> addresses;
+
+  /// Office gateways (`host:port`) that can reach this device from outside
+  /// (PROTOCOL.md section 11), from invite links.
+  List<String> gateways;
 
   /// User-chosen label; wins over [name] in the UI.
   String alias;
@@ -51,6 +57,7 @@ class AddressBookEntry {
         if (key != null) 'key': key,
         'os': os,
         'addresses': addresses,
+        if (gateways.isNotEmpty) 'gateways': gateways,
         if (alias.isNotEmpty) 'alias': alias,
         'favorite': favorite,
         'tags': tags,
@@ -74,6 +81,7 @@ class AddressBookEntry {
       key: json['key'] is String ? json['key'] as String : null,
       os: json['os'] is String ? json['os'] as String : 'unknown',
       addresses: strings(json['addresses']),
+      gateways: strings(json['gateways']),
       alias: json['alias'] is String ? json['alias'] as String : '',
       favorite: json['favorite'] == true,
       tags: strings(json['tags']),
@@ -125,6 +133,7 @@ class AddressBook extends ChangeNotifier {
     PeerIdentity peer, {
     String? reachedAt,
     bool connected = false,
+    List<String> gateways = const [],
   }) async {
     final entry = _entries.putIfAbsent(
       peer.id,
@@ -138,6 +147,9 @@ class AddressBook extends ChangeNotifier {
     if (connected) entry.lastConnected = DateTime.now();
     final fresh = [?reachedAt, ...peer.addresses];
     _mergeAddresses(entry, fresh);
+    if (gateways.isNotEmpty) {
+      entry.gateways = {...gateways, ...entry.gateways}.take(_maxAddresses).toList();
+    }
     await _save();
     return entry;
   }
@@ -209,6 +221,7 @@ class AddressBook extends ChangeNotifier {
       existing.favorite = existing.favorite || incoming.favorite;
       existing.tags = {...existing.tags, ...incoming.tags}.toList();
       _mergeAddresses(existing, incoming.addresses);
+      existing.gateways = {...incoming.gateways, ...existing.gateways}.take(_maxAddresses).toList();
     }
     await _save();
     return count;

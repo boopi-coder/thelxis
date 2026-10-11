@@ -11,6 +11,7 @@ import '../core/settings.dart';
 import '../files/files.dart';
 import '../l10n/strings.dart';
 import '../net/net_address.dart';
+import '../net/inband_signaling.dart';
 import '../net/signaling_channel.dart';
 import '../protocol/control_messages.dart';
 import '../protocol/input_messages.dart';
@@ -72,18 +73,27 @@ class ViewerSession extends SessionBase {
     this.turnHost,
     this._viewOnly = false,
     this.relayOnly = false,
+    this.viaGateway = false,
+    this.forcePublicStun = false,
   }) {
     encoder = InputEncoder(_sendInput);
   }
 
   final ViewerEnv env;
-  final SignalingChannel channel;
+  final SessionSignaling channel;
   final TurnInfo? turn;
   final NetAddress? turnHost;
 
   /// Gather only relayed candidates: the media must go through the host's
   /// embedded TURN.
   final bool relayOnly;
+
+  /// Connected through an office gateway (PROTOCOL.md section 11).
+  final bool viaGateway;
+
+  /// Connection-code sessions (PROTOCOL.md section 12) need public STUN to
+  /// punch through NATs whatever the user's setting says.
+  final bool forcePublicStun;
 
   /// Remote video; initialised by [start].
   final RTCVideoRenderer renderer = RTCVideoRenderer();
@@ -147,6 +157,10 @@ class ViewerSession extends SessionBase {
         incomingDir: env.incomingDir,
       );
 
+  /// Pretends the control channel opened (attaches in-band signaling).
+  @visibleForTesting
+  void debugControlOpened() => _attachInBandSignaling();
+
   /// Pretends the renderer drew its first frame.
   @visibleForTesting
   void debugFirstFrame() {
@@ -191,34 +205,63 @@ class ViewerSession extends SessionBase {
   }
 
   Future<void> start() async {
+    _listenSignaling();
+    try {
+      await _setUpPeer();
+    } on Object catch (e, st) {
+      _log.e('viewer setup failed', e, st);
+      await end('error');
+    }
+  }
+
+  /// Connection-code session (PROTOCOL.md section 12): answers the host's
+  /// verified offer from the `TX1.` code and returns the answer SDP, with ICE
+  /// gathering complete, for the `TX2.` code. Call [activateFromCode] once the
+  /// answer has been shown.
+  Future<String> prepareCodeAnswer(String offerSdp) async {
+    _clipboardOn = env.settings.clipboardSync;
+    await _setUpPeer();
+    final pc = _pc!;
+    await pc.setRemoteDescription(RTCSessionDescription(offerSdp, 'offer'));
+    _remoteSet = true;
+    final answer = await pc.createAnswer(kAnswerConstraints);
+    final gathering = IceGatheringWatch(pc);
+    await pc.setLocalDescription(answer);
+    await gathering.complete();
+    final local = await pc.getLocalDescription();
+    return local?.sdp ?? answer.sdp!;
+  }
+
+  /// Starts listening for later (in-band) signaling of a code session.
+  void activateFromCode() => _listenSignaling();
+
+  void _listenSignaling() {
     _clipboardOn = env.settings.clipboardSync;
     _signalSub = channel.events.listen(_onSignal);
     unawaited(channel.closed.then((_) {
       if (!_ended) unawaited(end('error'));
     }));
-    try {
-      await renderer.initialize();
-      renderer.onFirstFrameRendered = () {
-        _frameSeen = true;
-        notifyListeners();
-      };
-      final pc = await createPeerConnection(buildRtcConfiguration(
-        role: channel.role,
-        turn: turn,
-        turnHost: turnHost,
-        publicStun: env.settings.publicStun,
-        relayOnly: relayOnly,
-      ));
-      _pc = pc;
-      pc.onIceCandidate = _onLocalCandidate;
-      pc.onIceConnectionState = _onIceState;
-      pc.onTrack = _onTrack;
-      pc.onDataChannel = _onDataChannel;
-      _poller = StatsPoller(fetch: () => readStats(pc), target: stats)..start();
-    } on Object catch (e, st) {
-      _log.e('viewer setup failed', e, st);
-      await end('error');
-    }
+  }
+
+  Future<void> _setUpPeer() async {
+    await renderer.initialize();
+    renderer.onFirstFrameRendered = () {
+      _frameSeen = true;
+      notifyListeners();
+    };
+    final pc = await createPeerConnection(buildRtcConfiguration(
+      role: channel.role,
+      turn: turn,
+      turnHost: turnHost,
+      publicStun: env.settings.publicStun || forcePublicStun,
+      relayOnly: relayOnly,
+    ));
+    _pc = pc;
+    pc.onIceCandidate = _onLocalCandidate;
+    pc.onIceConnectionState = _onIceState;
+    pc.onTrack = _onTrack;
+    pc.onDataChannel = _onDataChannel;
+    _poller = StatsPoller(fetch: () => readStats(pc), target: stats, viaGateway: viaGateway)..start();
   }
 
   // --- signaling & WebRTC ------------------------------------------------
@@ -309,11 +352,23 @@ class ViewerSession extends SessionBase {
     }
   }
 
+  /// Code sessions carry later signaling on the control channel.
+  void _attachInBandSignaling() {
+    final c = channel;
+    if (c is InBandSignaling) {
+      c.attachTransport((m) => _sendControl(RtcMessage(m)));
+    }
+  }
+
   void _onDataChannel(RTCDataChannel dc) {
     switch (dc.label) {
       case 'control':
         _control = dc;
         dc.onMessage = _onControlMessage;
+        dc.onDataChannelState = (state) {
+          if (state == RTCDataChannelState.RTCDataChannelOpen) _attachInBandSignaling();
+        };
+        if (dc.state == RTCDataChannelState.RTCDataChannelOpen) _attachInBandSignaling();
       case 'input':
         _inputChannel = dc;
       case 'files':
@@ -355,6 +410,9 @@ class ViewerSession extends SessionBase {
       case ChatMessage(:final text):
         chatLog.add(text.length > 2000 ? text.substring(0, 2000) : text);
         notifyListeners();
+      case RtcMessage(:final data):
+        final c = channel;
+        if (c is InBandSignaling) unawaited(c.onRtc(data));
       case ByeMessage():
         unawaited(end('remote'));
       default:

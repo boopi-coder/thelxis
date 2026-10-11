@@ -33,11 +33,25 @@ sealed class ControlMessage {
         return text is String ? ChatMessage(text) : null;
       case 'permissions':
         return PermissionsMessage(Permissions.fromJson(json['permissions']));
+      case 'rtc':
+        final data = json['data'];
+        return data is Map ? RtcMessage(Map<String, dynamic>.from(data)) : null;
       case 'bye':
         return ByeMessage(json['reason'] is String ? json['reason'] as String : 'user');
     }
     return null;
   }
+}
+
+/// In-band WebRTC signaling for sessions created from connection codes
+/// (PROTOCOL.md section 12): the `data` of a `signal` message of section 4.2.
+class RtcMessage extends ControlMessage {
+  const RtcMessage(this.data);
+
+  final Map<String, dynamic> data;
+
+  @override
+  Map<String, dynamic> toJson() => {'t': 'rtc', 'data': data};
 }
 
 class HelloMessage extends ControlMessage {

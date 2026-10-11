@@ -12,7 +12,9 @@ import '../../session/host_credentials.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/thelxis_logo.dart';
+import '../../net/discovery.dart';
 import 'reachability.dart';
+import 'reachability_advice.dart';
 import 'share_access_dialog.dart';
 import '../../l10n/strings.dart';
 
@@ -29,6 +31,54 @@ class DeviceCard extends StatefulWidget {
 
 class _DeviceCardState extends State<DeviceCard> {
   bool _showOtp = false;
+  LanDiscovery? _lan;
+  Connectivity? _connectivity;
+  AppSettings? _settings;
+  bool _browsing = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _lan ??= context.read<LanDiscovery>();
+    final c = context.read<Connectivity>();
+    if (!identical(c, _connectivity)) {
+      _connectivity?.report.removeListener(_syncBrowsing);
+      _connectivity = c..report.addListener(_syncBrowsing);
+    }
+    _settings ??= context.read<AppSettings>()..addListener(_syncBrowsing);
+    _syncBrowsing();
+  }
+
+  /// While this device is not reachable from the internet by itself, look for
+  /// an office gateway on the network (PROTOCOL.md section 11): the answer
+  /// decides the status shown here and the `g=` addresses in invites.
+  void _syncBrowsing() {
+    final lan = _lan;
+    final c = _connectivity;
+    final st = _settings;
+    if (lan == null || c == null || st == null) return;
+    final direct = adviseReachability(
+      allowIncoming: st.allowIncoming,
+      report: c.report.value,
+      upnpEnabled: st.upnp,
+    );
+    final need = st.allowIncoming && !direct.reachable;
+    if (need && !_browsing) {
+      _browsing = true;
+      lan.acquireBrowsing();
+    } else if (!need && _browsing) {
+      _browsing = false;
+      lan.releaseBrowsing();
+    }
+  }
+
+  @override
+  void dispose() {
+    _connectivity?.report.removeListener(_syncBrowsing);
+    _settings?.removeListener(_syncBrowsing);
+    if (_browsing) _lan?.releaseBrowsing();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

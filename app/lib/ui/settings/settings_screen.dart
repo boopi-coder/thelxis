@@ -140,6 +140,14 @@ class SettingsScreen extends StatelessWidget {
                 onChanged: st.setPublicStun,
               ),
               const ManualForwardingSection(),
+              SwitchListTile(
+                key: const ValueKey('gateway-switch'),
+                secondary: const Icon(Icons.hub_outlined),
+                title: Text(s.t('settings.gateway')),
+                subtitle: Text(s.t('settings.gateway.hint')),
+                value: st.officeGateway,
+                onChanged: st.allowIncoming ? st.setOfficeGateway : null,
+              ),
               ListTile(
                 leading: const Icon(Icons.network_check_rounded),
                 title: Text(s.t('settings.diagnostics')),

@@ -13,6 +13,7 @@ import '../files/files.dart';
 import '../l10n/strings.dart';
 import '../net/handshake.dart';
 import '../net/net_address.dart';
+import '../net/inband_signaling.dart';
 import '../net/signaling_channel.dart';
 import '../platform/host_platform.dart';
 import '../platform/impl/android_host.dart' show CapturePermissionDenied;
@@ -87,18 +88,23 @@ class HostSession extends SessionBase {
     this.turn,
     this.turnHost,
     this.reversePermissions,
+    this.forcePublicStun = false,
   }) {
     _input = HostInputDispatcher(env.platform.input);
   }
 
   final HostEnv env;
-  final SignalingChannel channel;
+  final SessionSignaling channel;
   final TurnInfo? turn;
   final NetAddress? turnHost;
 
   /// Set when this host dialed out (reverse mode): the local user already
   /// consented, so the viewer's `request` is granted with these permissions.
   final Permissions? reversePermissions;
+
+  /// Connection-code sessions (PROTOCOL.md section 12) need public STUN to
+  /// punch through NATs whatever the user's setting says.
+  final bool forcePublicStun;
 
   late final HostInputDispatcher _input;
   RTCPeerConnection? _pc;
@@ -195,56 +201,16 @@ class HostSession extends SessionBase {
   bool get controlEnabled => _permissions.control && env.platform.inputSupported;
 
   Future<void> start() async {
-    _signalSub = channel.events.listen(_onSignal);
-    unawaited(channel.closed.then((_) {
-      if (!_ended) unawaited(end('error'));
-    }));
+    _listenSignaling();
     try {
-      final config = buildRtcConfiguration(
+      final parts = await createHostPeerConnection(buildRtcConfiguration(
         role: channel.role,
         turn: turn,
         turnHost: turnHost,
-        publicStun: env.settings.publicStun,
-      );
-      final pc = await createPeerConnection(config);
-      _pc = pc;
-      pc.onIceCandidate = _onLocalCandidate;
-      pc.onIceConnectionState = _onIceState;
-
-      MediaStream? tag;
-      try {
-        // A stream id in the SDP lets the viewer attach the track to a stream.
-        tag = await createLocalMediaStream('thelxis-screen');
-      } on Object catch (e) {
-        _log.d('no msid stream: $e');
-      }
-      final tx = await pc.addTransceiver(
-        kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
-        init: RTCRtpTransceiverInit(
-          direction: TransceiverDirection.SendOnly,
-          streams: tag == null ? null : [tag],
-        ),
-      );
-      _sender = tx.sender;
-
-      final control = await pc.createDataChannel('control', RTCDataChannelInit()..ordered = true);
-      final input = await pc.createDataChannel('input', RTCDataChannelInit()..ordered = true);
-      final files = await pc.createDataChannel('files', RTCDataChannelInit()..ordered = true);
-      _control = control;
-      _inputChannel = input;
-      filesChannel = files;
-      // Wrap synchronously: the viewer may send as soon as the channel opens.
-      attachFiles(
-        RtcFileChannel(files),
-        isHost: true,
-        filesAllowed: _filesAllowed,
-        incomingDir: env.incomingDir,
-      );
-      control.onDataChannelState = _onControlState;
-      control.onMessage = _onControlMessage;
-      input.onMessage = _onInputMessage;
-      if (control.state == RTCDataChannelState.RTCDataChannelOpen) _onControlState(control.state!);
-
+        publicStun: env.settings.publicStun || forcePublicStun,
+      ));
+      _adopt(parts);
+      final pc = parts.pc;
       final offer = await pc.createOffer(kHostOfferConstraints);
       await pc.setLocalDescription(offer);
       await channel.sendOffer(offer.sdp!);
@@ -253,6 +219,53 @@ class HostSession extends SessionBase {
     } on Object catch (e, st) {
       _log.e('host session setup failed', e, st);
       await end('error');
+    }
+  }
+
+  /// Connection-code session (PROTOCOL.md section 12): the offer already
+  /// travelled in the `TX1.` code and [parts] is the PeerConnection that made
+  /// it; [answerSdp] is the viewer's verified answer from the `TX2.` code.
+  Future<void> startFromCode(HostPeerParts parts, String answerSdp) async {
+    _listenSignaling();
+    try {
+      _adopt(parts);
+      await _applyAnswer(answerSdp);
+      _poller = StatsPoller(fetch: () => readStats(parts.pc), target: stats)..start();
+    } on Object catch (e, st) {
+      _log.e('host session setup from code failed', e, st);
+      await end('error');
+    }
+  }
+
+  void _listenSignaling() {
+    _signalSub = channel.events.listen(_onSignal);
+    unawaited(channel.closed.then((_) {
+      if (!_ended) unawaited(end('error'));
+    }));
+  }
+
+  /// Wires the session to the PeerConnection and its channels.
+  void _adopt(HostPeerParts parts) {
+    final pc = parts.pc;
+    _pc = pc;
+    pc.onIceCandidate = _onLocalCandidate;
+    pc.onIceConnectionState = _onIceState;
+    _sender = parts.sender;
+    _control = parts.control;
+    _inputChannel = parts.input;
+    filesChannel = parts.files;
+    // Wrap synchronously: the viewer may send as soon as the channel opens.
+    attachFiles(
+      RtcFileChannel(parts.files),
+      isHost: true,
+      filesAllowed: _filesAllowed,
+      incomingDir: env.incomingDir,
+    );
+    parts.control.onDataChannelState = _onControlState;
+    parts.control.onMessage = _onControlMessage;
+    parts.input.onMessage = _onInputMessage;
+    if (parts.control.state == RTCDataChannelState.RTCDataChannelOpen) {
+      _onControlState(parts.control.state!);
     }
   }
 
@@ -369,8 +382,17 @@ class HostSession extends SessionBase {
 
   void _onControlState(RTCDataChannelState state) {
     if (_ended) return;
-    if (state == RTCDataChannelState.RTCDataChannelOpen && _auth == null) {
-      _sendHello();
+    if (state == RTCDataChannelState.RTCDataChannelOpen) {
+      _attachInBandSignaling();
+      if (_auth == null) _sendHello();
+    }
+  }
+
+  /// Code sessions carry later signaling on the control channel.
+  void _attachInBandSignaling() {
+    final c = channel;
+    if (c is InBandSignaling) {
+      c.attachTransport((m) => _send(RtcMessage(m)));
     }
   }
 
@@ -408,6 +430,9 @@ class HostSession extends SessionBase {
     switch (m) {
       case AuthMessage():
         unawaited(_onAuth(m));
+      case RtcMessage(:final data):
+        final c = channel;
+        if (c is InBandSignaling) unawaited(c.onRtc(data));
       case ByeMessage():
         unawaited(end(_pendingEnd ?? 'remote'));
       case SelectDisplayMessage(:final id):

@@ -66,6 +66,11 @@ final Map<String, (String, String)> kSettingsStrings = {
     'On by default. They only learn your public IP address and port, so devices behind routers can find each other. They never see your screen, files or any other data. Turn off if you only connect inside one network.',
     'Включено по умолчанию. Они узнают только ваш публичный IP-адрес и порт, чтобы устройства за роутерами могли найти друг друга. Ваш экран, файлы и любые другие данные им недоступны. Отключите, если подключаетесь только внутри одной сети.',
   ),
+  'settings.gateway': ('Office gateway', 'Офисный шлюз'),
+  'settings.gateway.hint': (
+    'Other Thelxis computers in this network become reachable from the internet through this one, so only this PC needs a forwarded port. Traffic stays end-to-end encrypted: this PC only sees ciphertext. It also shows this PC to the other devices on the network.',
+    'Другие компьютеры с Thelxis в этой сети становятся доступны из интернета через этот, и порт нужно пробросить только на нём. Трафик остаётся зашифрованным end-to-end: этот компьютер видит только шифртекст. Также этот компьютер становится виден остальным устройствам сети.',
+  ),
   'settings.manual': ('Manual port forwarding', 'Ручной проброс портов'),
   'settings.manual.hint': (
     'For routers without UPnP, or several computers behind one address. You open the ports on the router yourself.',

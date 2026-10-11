@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io' show Directory, InternetAddress;
 
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 import '../core/address_book.dart';
 import '../core/identity.dart';
@@ -9,10 +10,14 @@ import '../core/log.dart';
 import '../core/settings.dart';
 import '../core/system_info.dart';
 import '../core/trusted_devices.dart';
+import '../net/connect_code.dart';
 import '../net/connect_target.dart';
 import '../net/connectivity/connectivity.dart';
 import '../net/dialer.dart';
 import '../net/discovery.dart';
+import '../net/gateway.dart';
+import '../net/handshake.dart' show generateNonce;
+import '../net/inband_signaling.dart';
 import '../net/listener.dart';
 import '../net/net_address.dart';
 import '../net/peer_identity.dart';
@@ -28,10 +33,12 @@ import 'capture.dart';
 import 'clipboard_sync.dart';
 import 'host_credentials.dart';
 import 'host_session.dart';
+import 'ice_config.dart';
 import 'prompts.dart';
 import 'session_base.dart';
 import 'session_history.dart';
 import 'viewer_session.dart';
+import 'webrtc_util.dart';
 
 const _log = Logger('sessions');
 
@@ -55,6 +62,45 @@ class FileNotice {
       FileTransferEventKind.failed => strings.transferFailed(name),
       FileTransferEventKind.cancelled => null,
     };
+  }
+}
+
+/// An offer code (`TX1.`) this device made and is waiting to hear back on
+/// (PROTOCOL.md section 12). Single use; expires after ten minutes.
+class PendingCodeOffer {
+  PendingCodeOffer._({
+    required this.code,
+    required this.nonce,
+    required this.expiresAt,
+    required this.parts,
+  });
+
+  /// An offer without a PeerConnection, for UI tests that replace the
+  /// manager's code methods.
+  @visibleForTesting
+  PendingCodeOffer.forTest({required this.code, required this.nonce, required this.expiresAt})
+      : parts = null;
+
+  /// The text to give to the other person.
+  final String code;
+  final String nonce;
+  final DateTime expiresAt;
+  final HostPeerParts? parts;
+  Timer? _expiry;
+  bool _closed = false;
+
+  Duration get remaining => expiresAt.difference(DateTime.now());
+  bool get isExpired => remaining <= Duration.zero;
+
+  Future<void> _close() async {
+    if (_closed) return;
+    _closed = true;
+    _expiry?.cancel();
+    try {
+      await parts?.pc.close();
+    } on Object {
+      // Already gone.
+    }
   }
 }
 
@@ -167,6 +213,11 @@ class SessionManager extends ChangeNotifier {
   Future<void> _applying = Future.value();
   bool? _lastUpnp;
   String? _lastManualKey;
+  bool _gatewayBrowsing = false;
+  late final OfficeGateway _gateway = OfficeGateway(
+    connectivity: connectivity,
+    findTarget: (id) => lan.find(id),
+  );
   bool _started = false;
   bool _disposed = false;
 
@@ -277,15 +328,34 @@ class SessionManager extends ChangeNotifier {
     }
   }
 
+  /// The office gateway (PROTOCOL.md section 11) runs only while it is on and
+  /// incoming connections are accepted. It needs the LAN discovery table
+  /// fresh, so a browser runs for as long as it is on, and the discovery
+  /// replies announce it to the devices behind it.
+  void _applyGateway() {
+    final on = settings.officeGateway && settings.allowIncoming;
+    listener.gatewayHandler = on ? _gateway.handle : null;
+    lan.gatewayAdvertisement = on ? connectivity.advertisedAddresses : () => null;
+    if (on && !_gatewayBrowsing) {
+      _gatewayBrowsing = true;
+      lan.acquireBrowsing();
+    } else if (!on && _gatewayBrowsing) {
+      _gatewayBrowsing = false;
+      lan.releaseBrowsing();
+    }
+  }
+
   Future<void> _apply() async {
     if (_disposed) return;
     final android = _android;
     _applyManualForwarding();
+    _applyGateway();
     if (settings.allowIncoming) {
       if (!listener.isListening) {
         await listener.start(port: listenerPort, address: listenerAddress);
       }
-      if (settings.lanDiscovery) {
+      if (settings.lanDiscovery || settings.officeGateway) {
+        // A gateway must be discoverable by the devices behind it.
         await lan.startResponder();
       } else {
         await lan.stopResponder();
@@ -401,6 +471,157 @@ class SessionManager extends ChangeNotifier {
     await session.start();
   }
 
+  // --- connection codes (PROTOCOL.md section 12) ---------------------------
+
+  static const int maxPendingCodes = 3;
+  static const Uuid _uuid = Uuid();
+  final List<PendingCodeOffer> _codeOffers = [];
+
+  /// Offer codes waiting for an answer, oldest first.
+  List<PendingCodeOffer> get codeOffers => List.unmodifiable(_codeOffers);
+
+  /// Host side: builds a fresh offer (public STUN forced on, ICE gathering
+  /// complete) and returns its `TX1.` code. At most [maxPendingCodes] stay
+  /// pending; the oldest is dropped to make room.
+  Future<PendingCodeOffer> createCodeOffer({
+    Duration lifetime = kCodeLifetime,
+    Duration gatheringTimeout = const Duration(seconds: 5),
+  }) async {
+    if (!platform.hostSupported) {
+      throw ConnectException(S.current.t('err.noHost'));
+    }
+    while (_codeOffers.length >= maxPendingCodes) {
+      await discardCodeOffer(_codeOffers.first);
+    }
+    final parts = await createHostPeerConnection(buildRtcConfiguration(
+      role: SignalingRole.listener,
+      publicStun: true,
+    ));
+    try {
+      final offer = await parts.pc.createOffer(kHostOfferConstraints);
+      final gathering = IceGatheringWatch(parts.pc);
+      await parts.pc.setLocalDescription(offer);
+      await gathering.complete(timeout: gatheringTimeout);
+      final sdp = (await parts.pc.getLocalDescription())?.sdp ?? offer.sdp!;
+      final nonce = generateNonce();
+      final expiresAt = DateTime.now().add(lifetime);
+      final code = await buildOfferCode(
+        identity: identity,
+        name: settings.deviceName,
+        os: systemInfo.os,
+        nonce: nonce,
+        exp: expiresAt.millisecondsSinceEpoch ~/ 1000,
+        sdp: sdp,
+      );
+      if (code.length > kMaxCodeChars) {
+        throw ConnectException(S.current.t('code.tooBig'));
+      }
+      final pending = PendingCodeOffer._(code: code, nonce: nonce, expiresAt: expiresAt, parts: parts);
+      pending._expiry = Timer(lifetime, () => unawaited(discardCodeOffer(pending)));
+      _codeOffers.add(pending);
+      notifyListeners();
+      return pending;
+    } on Object {
+      try {
+        await parts.pc.close();
+      } on Object {
+        // Nothing left to clean up.
+      }
+      rethrow;
+    }
+  }
+
+  /// Forgets a pending offer and closes its PeerConnection.
+  Future<void> discardCodeOffer(PendingCodeOffer offer) async {
+    if (!_codeOffers.remove(offer)) return;
+    await offer._close();
+    notifyListeners();
+  }
+
+  /// Host side: applies the viewer's `TX2.` code to [offer] and starts the
+  /// session; authorization follows as for any other session. Throws
+  /// [CodeException] for a bad, foreign or tampered code (the offer stays
+  /// usable) and [ConnectException] for an expired offer.
+  Future<HostSession> acceptAnswerCode(PendingCodeOffer offer, String text) async {
+    if (offer.isExpired || !_codeOffers.contains(offer)) {
+      throw ConnectException(S.current.t('code.expired'));
+    }
+    final answer = await parseAnswerCode(text, hostNonce: offer.nonce, ownKey: identity.publicKeyB64);
+    // Single use: from here on the offer belongs to the session.
+    _codeOffers.remove(offer);
+    offer._expiry?.cancel();
+    offer._closed = true;
+    final session = HostSession(
+      env: _hostEnv,
+      peer: answer.peer,
+      sid: _uuid.v4(),
+      channel: InBandSignaling(
+        identity: identity,
+        role: SignalingRole.listener,
+        peerKey: answer.key,
+        hostNonce: offer.nonce,
+        viewerNonce: answer.nonce,
+      ),
+      forcePublicStun: true,
+    );
+    trackHostSession(session);
+    onAttention?.call();
+    await session.startFromCode(offer.parts!, answer.sdp);
+    return session;
+  }
+
+  /// Viewer side: parses and verifies a pasted `TX1.` code. Throws
+  /// [CodeException]. The caller shows the host's name and ID for confirmation
+  /// before [answerOfferCode].
+  Future<OfferCode> readOfferCode(String text) =>
+      parseOfferCode(text, ownKey: identity.publicKeyB64);
+
+  /// Viewer side: answers a verified offer. Returns the running session (it
+  /// waits for the host to apply the answer) and the `TX2.` text to send back.
+  Future<({ViewerSession session, String answerCode})> answerOfferCode(OfferCode offer) async {
+    final viewerNonce = generateNonce();
+    final session = ViewerSession(
+      env: _viewerEnv,
+      peer: offer.peer,
+      sid: _uuid.v4(),
+      channel: InBandSignaling(
+        identity: identity,
+        role: SignalingRole.dialer,
+        peerKey: offer.key,
+        hostNonce: offer.nonce,
+        viewerNonce: viewerNonce,
+      ),
+      forcePublicStun: true,
+    );
+    final String answerCode;
+    try {
+      final sdp = await session.prepareCodeAnswer(offer.sdp);
+      answerCode = await buildAnswerCode(
+        identity: identity,
+        name: settings.deviceName,
+        os: systemInfo.os,
+        hostNonce: offer.nonce,
+        viewerNonce: viewerNonce,
+        sdp: sdp,
+      );
+      if (answerCode.length > kMaxCodeChars) {
+        throw ConnectException(S.current.t('code.tooBig'));
+      }
+    } on Object catch (e) {
+      await session.end('error');
+      session.dispose();
+      if (e is ConnectException) rethrow;
+      _log.w('answering a code failed', e);
+      throw ConnectException(S.current.t('code.failed'));
+    }
+    _track(session);
+    _viewers.add(session);
+    await addressBook.upsertPeer(offer.peer, connected: true);
+    notifyListeners();
+    session.activateFromCode();
+    return (session: session, answerCode: answerCode);
+  }
+
   // --- outgoing ----------------------------------------------------------
 
   /// Connects to [target] as the controlling side and returns the running
@@ -421,6 +642,7 @@ class SessionManager extends ChangeNotifier {
       turnHost: dial.connectedTo,
       viewOnly: viewOnly,
       relayOnly: relayOnly,
+      viaGateway: dial.connectedTo.isViaGateway,
     );
     _track(session);
     _viewers.add(session);
@@ -475,8 +697,14 @@ class SessionManager extends ChangeNotifier {
       final dial = await dialer.dial(addresses: addresses, want: want, expectedId: expected);
       await addressBook.upsertPeer(
         dial.peer,
-        reachedAt: dial.connectedTo.hostPort,
+        // Through a gateway the connected address is the gateway's, not the
+        // device's.
+        reachedAt: dial.connectedTo.isViaGateway ? null : dial.connectedTo.hostPort,
         connected: true,
+        gateways: [
+          for (final g in target.gateways) g.hostPort,
+          if (dial.connectedTo.isViaGateway) dial.connectedTo.hostPort,
+        ],
       );
       return dial;
     } on DialException catch (e) {
@@ -514,6 +742,11 @@ class SessionManager extends ChangeNotifier {
       if (entry != null) out.addAll(parseAddressList(entry.addresses));
       for (final p in lan.peers) {
         if (p.id == id) out.add(NetAddress(p.host, p.port));
+      }
+      // Office gateways come last: the dialer races them behind the direct
+      // routes, and only because the target's ID is known and gets verified.
+      for (final g in [...target.gateways, ...parseAddressList(entry?.gateways ?? const [])]) {
+        out.add(g.viaTarget(id));
       }
     }
     final seen = <NetAddress>{};
@@ -625,6 +858,14 @@ class SessionManager extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     settings.removeListener(_onSettingsChanged);
+    for (final o in _codeOffers.toList()) {
+      unawaited(o._close());
+    }
+    _codeOffers.clear();
+    if (_gatewayBrowsing) {
+      _gatewayBrowsing = false;
+      lan.releaseBrowsing();
+    }
     unawaited(_incomingSub?.cancel());
     unawaited(_captureStopSub?.cancel());
     unawaited(_badgeStopSub?.cancel());

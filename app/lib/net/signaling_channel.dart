@@ -65,12 +65,44 @@ class ResumedConnection {
 
 typedef ResumeCallback = Future<ResumedConnection?> Function(String sid);
 
+/// What a session needs from its signaling: verified offers, answers and
+/// candidates in, signed ones out. Implemented by the WebSocket-based
+/// [SignalingChannel] and by in-band signaling over the `control` channel for
+/// sessions created from connection codes (PROTOCOL.md section 12).
+abstract interface class SessionSignaling {
+  SignalingRole get role;
+
+  /// Verified inbound events (single subscription, buffered until listened).
+  Stream<SignalEvent> get events;
+
+  /// Completes when the signaling is finished.
+  Future<void> get closed;
+
+  bool get isClosed;
+
+  /// Whether a transport (WebSocket, or the control channel) is attached.
+  bool get isAttached;
+
+  /// Simulates a drop of the transport without ending the session (tests).
+  void debugDropSocket();
+
+  Future<void> sendOffer(String sdp);
+  Future<void> sendAnswer(String sdp);
+  void sendCandidate({required String candidate, String? sdpMid, int? sdpMLineIndex});
+
+  /// Tells the peer the session is over and closes.
+  void bye(String reason);
+
+  /// Closes without notifying the peer.
+  void dispose();
+}
+
 /// Signaling for exactly one session over one (replaceable) WebSocket.
 ///
 /// Offers and answers are signed with the device key over a transcript that
 /// binds both handshake nonces, so a verified SDP proves its DTLS fingerprints
 /// come from the authenticated peer (PROTOCOL.md section 4.2).
-class SignalingChannel {
+class SignalingChannel implements SessionSignaling {
   SignalingChannel({
     required this.sid,
     required this.identity,
@@ -90,6 +122,7 @@ class SignalingChannel {
 
   final String sid;
   final Identity identity;
+  @override
   final SignalingRole role;
 
   /// The peer's base64url public key (already authenticated by the handshake).
@@ -113,20 +146,27 @@ class SignalingChannel {
 
   /// Verified inbound events. Single-subscription: events raised before the
   /// session listens are buffered, so a fast offer is never lost.
+  @override
   Stream<SignalEvent> get events => _events.stream;
 
   /// Completes when the channel is finished (bye either way, or [dispose]).
+  @override
   Future<void> get closed => _closed.future;
 
+  @override
   bool get isClosed => _ended;
 
   /// Whether a WebSocket is currently attached.
+  @override
   bool get isAttached => _peer != null && !_peer!.isClosed;
 
+  @override
   Future<void> sendOffer(String sdp) => _sendSdp('offer', sdp);
 
+  @override
   Future<void> sendAnswer(String sdp) => _sendSdp('answer', sdp);
 
+  @override
   void sendCandidate({required String candidate, String? sdpMid, int? sdpMLineIndex}) {
     _send(SigSignal({
       'type': 'candidate',
@@ -137,6 +177,7 @@ class SignalingChannel {
   }
 
   /// Tells the peer the session is over and closes.
+  @override
   void bye(String reason) {
     if (_ended) return;
     final p = _peer;
@@ -146,9 +187,11 @@ class SignalingChannel {
 
   /// Closes without notifying the peer (it already knows, or the session
   /// never started).
+  @override
   void dispose() => _finish();
 
   /// Simulates a network drop of the WebSocket without ending the session.
+  @override
   @visibleForTesting
   void debugDropSocket() => unawaited(_peer?.close());
 

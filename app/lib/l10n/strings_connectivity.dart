@@ -66,9 +66,76 @@ final Map<String, (String, String)> kConnectivityStrings = {
     'No address found yet. Connect to a network, or open the connectivity diagnostics in Settings.',
     'Адрес пока не найден. Подключитесь к сети или откройте диагностику связи в настройках.',
   ),
+  'share.viaGateway': ('Also through the office gateway', 'Также через офисный шлюз'),
   'share.note': (
     'The invite identifies this device as {id}; the other side checks that ID cryptographically, so a wrong address can never connect them to a different device.',
     'Приглашение указывает это устройство как {id}; другая сторона криптографически проверяет этот ID, поэтому неверный адрес не соединит её с чужим устройством.',
+  ),
+
+  // --- connect by code ---
+  'code.title': ('Connect by code', 'Подключение по коду'),
+  'code.intro': (
+    'When neither device can accept connections (for example both are behind a provider NAT), swap two short codes through any messenger. No server and no router setup are needed.',
+    'Если ни одно устройство не принимает подключения (например, оба за NAT провайдера), обменяйтесь двумя короткими кодами через любой мессенджер. Сервер и настройка роутера не нужны.',
+  ),
+  'code.mode.share': ('My code', 'Мой код'),
+  'code.mode.enter': ('I have a code', 'У меня есть код'),
+  'code.share.hint': (
+    'Create a code and send it to the person who will control this device. Then paste the code they send back.',
+    'Создайте код и отправьте тому, кто будет управлять этим устройством. Затем вставьте код, который он пришлёт в ответ.',
+  ),
+  'code.create': ('Create code', 'Создать код'),
+  'code.creating': ('Preparing the code…', 'Готовим код…'),
+  'code.yourCode': ('Your code', 'Ваш код'),
+  'code.copy': ('Copy code', 'Скопировать код'),
+  'code.noun': ('Code', 'Код'),
+  'code.expiresIn': ('Valid for {time}', 'Действителен ещё {time}'),
+  'code.expired': ('This code has expired. Create a new one.', 'Срок кода истёк. Создайте новый.'),
+  'code.pasteAnswer': ('Paste their answer code (TX2…)', 'Вставьте ответный код (TX2…)'),
+  'code.pasteOffer': ('Paste the code you received (TX1…)', 'Вставьте полученный код (TX1…)'),
+  'code.apply': ('Connect', 'Подключиться'),
+  'code.answer': ('Answer', 'Ответить'),
+  'code.answerReady': (
+    'Send this answer code back. The connection starts when the other person pastes it.',
+    'Отправьте этот ответный код обратно. Подключение начнётся, когда собеседник вставит его.',
+  ),
+  'code.answerNoun': ('Answer code', 'Ответный код'),
+  'code.confirm.title': ('Connect to this device?', 'Подключиться к этому устройству?'),
+  'code.confirm.body': (
+    'The code comes from the device below. Check its ID with the person who sent the code (by phone, for example) before you continue.',
+    'Код выпущен устройством ниже. Перед продолжением сверьте его ID с тем, кто прислал код (например, по телефону).',
+  ),
+  'code.confirm.known': ('Known device', 'Известное устройство'),
+  'code.confirm.new': ('New device', 'Новое устройство'),
+  'code.confirm.trust': ('Connect', 'Подключиться'),
+  'code.error.malformed': (
+    'This is not a valid code. Copy it again completely, including the TX1. or TX2. start.',
+    'Это неверный код. Скопируйте его заново полностью, вместе с началом TX1. или TX2.',
+  ),
+  'code.error.tooLarge': ('The code is too long to be genuine.', 'Код слишком длинный для настоящего.'),
+  'code.error.unsupported': (
+    'This code comes from a newer version of Thelxis. Update the app.',
+    'Этот код создан более новой версией Thelxis. Обновите приложение.',
+  ),
+  'code.error.expired': ('This code has expired. Ask for a new one.', 'Срок кода истёк. Попросите новый.'),
+  'code.error.badSignature': (
+    'The code\'s signature is wrong: it was altered or does not belong to this connection.',
+    'Подпись кода неверна: его изменили или он не относится к этому подключению.',
+  ),
+  'code.error.mismatch': (
+    'This code does not belong here. Use the answer to the code you created.',
+    'Этот код сюда не подходит. Используйте ответ на созданный вами код.',
+  ),
+  'code.tooBig': (
+    'The connection data is too large for a code.',
+    'Данные подключения слишком велики для кода.',
+  ),
+  'code.failed': ('Could not prepare the connection.', 'Не удалось подготовить подключение.'),
+  'code.waiting': ('Waiting for the other device…', 'Ждём второе устройство…'),
+  'code.started': ('Connecting. The other device will ask for access.', 'Подключаемся. Второе устройство запросит доступ.'),
+  'code.hint.punch': (
+    'Needs internet on both sides. Public STUN servers are used for this connection.',
+    'Нужен интернет с обеих сторон. Для этого подключения используются публичные STUN-серверы.',
   ),
 
   // --- reachability ---
@@ -140,14 +207,20 @@ final Map<String, (String, String)> kConnectivityStrings = {
     'Для тех, у кого нет IPv6, включите UPnP на роутере или пробросьте порты вручную.',
   ),
 
+  'reach.gateway.title': ('Reachable through office gateway {name}', 'Доступно через офисный шлюз {name}'),
+  'reach.gateway.body': (
+    'People on the internet can connect to this device through {name}. No router setup is needed here.',
+    'Подключиться к этому устройству из интернета можно через {name}. Настраивать роутер здесь не нужно.',
+  ),
+
   'reach.cgnat.title': ('Your provider blocks incoming connections', 'Провайдер блокирует входящие подключения'),
   'reach.cgnat.body': (
     'Your provider shares one public address between many customers (CGNAT), so nobody can reach this device from the internet over IPv4.',
     'Провайдер выдаёт один публичный адрес многим клиентам (CGNAT), поэтому из интернета по IPv4 до этого устройства не достучаться.',
   ),
   'reach.cgnat.steps': (
-    'Connect by code (coming in version 0.2): no router setup, works through CGNAT.\nUse "Let them control this device": the connection goes out from you instead.\nOr ask the provider for a public IP, or use IPv6 or a VPN.',
-    'Подключение по коду (появится в версии 0.2): без настройки роутера, работает через CGNAT.\nИспользуйте «Дать им управлять этим устройством»: подключение пойдёт от вас.\nИли попросите у провайдера публичный IP, либо используйте IPv6 или VPN.',
+    'Use "Connect by code" on the Home page: no router setup, works through CGNAT.\nOr use "Let them control this device": the connection goes out from you instead.\nOr ask the provider for a public IP, or use IPv6 or a VPN.',
+    'Используйте «Подключение по коду» на главной: без настройки роутера, работает через CGNAT.\nЛибо используйте «Дать им управлять этим устройством»: подключение пойдёт от вас.\nИли попросите у провайдера публичный IP, либо используйте IPv6 или VPN.',
   ),
   'reach.cgnat.hint': (
     'Your provider blocks incoming (CGNAT). Tap for options.',

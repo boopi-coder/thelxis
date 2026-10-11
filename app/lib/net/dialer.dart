@@ -79,6 +79,7 @@ class Dialer {
     required this.localInfo,
     required this.advertisedAddresses,
     this.stagger = const Duration(milliseconds: 250),
+    this.gatewayDelay = const Duration(milliseconds: 500),
     this.connectTimeout = const Duration(seconds: 8),
     this.handshakeTimeout = const Duration(seconds: 20),
   });
@@ -87,6 +88,10 @@ class Dialer {
   final LocalPeerInfo Function() localInfo;
   final List<String> Function() advertisedAddresses;
   final Duration stagger;
+
+  /// Gateway routes (PROTOCOL.md section 11) start this much after the first
+  /// direct attempt, so a reachable device never needs the office gateway.
+  final Duration gatewayDelay;
   final Duration connectTimeout;
   final Duration handshakeTimeout;
 
@@ -98,6 +103,9 @@ class Dialer {
     required HelloWant want,
     String? expectedId,
   }) async {
+    // A gateway only pipes bytes: without a known ID to verify there would be
+    // nothing to stop it (or anything it can reach) impersonating the target.
+    addresses = _usableRoutes(addresses, expectedId);
     final e = await _race(
       addresses,
       (addr) => _attempt(addr, want: want, expectedId: expectedId),
@@ -125,6 +133,7 @@ class Dialer {
   /// returns the listener's verified identity without sending `hello_ack`, so
   /// the user can confirm it before anything is revealed or accepted.
   Future<PeerIdentity> probe(List<NetAddress> addresses) async {
+    addresses = _usableRoutes(addresses, null);
     final e = await _race(
       addresses,
       (addr) => _attempt(addr, want: HelloWant.control, probeOnly: true),
@@ -132,6 +141,13 @@ class Dialer {
     await e.ws.close();
     return e.peer;
   }
+
+  /// Drops gateway routes that cannot be verified: no expected ID, or a route
+  /// meant for another device.
+  static List<NetAddress> _usableRoutes(List<NetAddress> addresses, String? expectedId) => [
+        for (final a in addresses)
+          if (!a.isViaGateway || (expectedId != null && a.viaId == expectedId)) a,
+      ];
 
   Future<ResumedConnection?> _resume(
     String sid,
@@ -146,7 +162,23 @@ class Dialer {
     return ResumedConnection(e.ws, e.dialerNonce, e.listenerNonce);
   }
 
-  /// Happy eyeballs: start attempt i after i * [stagger]; the first success
+  /// When each attempt of [addresses] starts, relative to the dial: direct
+  /// addresses at i * [stagger]; gateway routes after the direct ones, at
+  /// [gatewayDelay] + j * [stagger] (immediately when there is nothing direct).
+  List<Duration> raceSchedule(List<NetAddress> addresses) {
+    final hasDirect = addresses.any((a) => !a.isViaGateway);
+    var direct = 0;
+    var via = 0;
+    return [
+      for (final a in addresses)
+        if (a.isViaGateway)
+          (hasDirect ? gatewayDelay : Duration.zero) + stagger * via++
+        else
+          stagger * direct++,
+    ];
+  }
+
+  /// Happy eyeballs: attempts start on the [raceSchedule]; the first success
   /// wins and every other attempt is torn down.
   Future<_Established> _race(
     List<NetAddress> addresses,
@@ -182,6 +214,7 @@ class Dialer {
       }
     }
 
+    final schedule = raceSchedule(addresses);
     for (var i = 0; i < addresses.length; i++) {
       final addr = addresses[i];
       void run() {
@@ -194,10 +227,10 @@ class Dialer {
         });
       }
 
-      if (i == 0) {
+      if (schedule[i] == Duration.zero) {
         run();
       } else {
-        timers.add(Timer(stagger * i, run));
+        timers.add(Timer(schedule[i], run));
       }
     }
     return done.future;
@@ -367,6 +400,8 @@ class Dialer {
         return const DialException(DialFailure.version, 'The other device runs an incompatible version.');
       case 'bad_signature':
         return const DialException(DialFailure.badSignature, 'The other device rejected our signature.');
+      case 'not_found':
+        return const DialException(DialFailure.unreachable, 'The gateway cannot find that device.');
       default:
         return DialException(DialFailure.protocol, 'Connection refused (${e.code})');
     }

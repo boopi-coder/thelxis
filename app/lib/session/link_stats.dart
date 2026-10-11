@@ -13,7 +13,7 @@ class StatEntry {
 }
 
 /// How media currently flows (shown in the stats overlay).
-enum LinkPath { unknown, lan, ipv6, direct, relay }
+enum LinkPath { unknown, lan, ipv6, direct, relay, gateway }
 
 class LinkStats {
   const LinkStats({
@@ -38,11 +38,23 @@ class LinkStats {
   final String? codec;
   final LinkPath path;
 
+  LinkStats withPath(LinkPath p) => LinkStats(
+        rttMs: rttMs,
+        fps: fps,
+        bitrateBps: bitrateBps,
+        lossPercent: lossPercent,
+        width: width,
+        height: height,
+        codec: codec,
+        path: p,
+      );
+
   String get pathLabel => switch (path) {
         LinkPath.lan => S.current.t('path.lan'),
         LinkPath.ipv6 => 'IPv6',
         LinkPath.direct => S.current.t('path.direct'),
         LinkPath.relay => S.current.t('path.relay'),
+        LinkPath.gateway => S.current.t('path.gateway'),
         LinkPath.unknown => '—',
       };
 }

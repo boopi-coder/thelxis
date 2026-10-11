@@ -9,6 +9,7 @@ import '../core/identity.dart';
 import '../core/log.dart';
 import '../core/thelxis_id.dart';
 import 'connectivity/connectivity.dart';
+import 'net_address.dart';
 import 'peer_identity.dart';
 
 const _log = Logger('discovery');
@@ -24,6 +25,8 @@ class DiscoveredPeer {
     required this.host,
     required this.port,
     required this.lastSeen,
+    this.gateway = false,
+    this.gatewayAddresses = const [],
   });
 
   final String id;
@@ -33,6 +36,11 @@ class DiscoveredPeer {
   final String host;
   final int port;
   final DateTime lastSeen;
+
+  /// The device runs the office gateway (PROTOCOL.md section 11) and can be
+  /// reached from outside at [gatewayAddresses].
+  final bool gateway;
+  final List<String> gatewayAddresses;
 
   String get address => '$host:$port';
   String get formattedId => formatThelxisId(id);
@@ -45,6 +53,8 @@ class DiscoveredPeer {
         host: host,
         port: port,
         lastSeen: t,
+        gateway: gateway,
+        gatewayAddresses: gatewayAddresses,
       );
 }
 
@@ -56,6 +66,7 @@ String buildHere({
   required Identity identity,
   required LocalPeerInfo info,
   required int port,
+  List<String>? gatewayAddresses,
 }) =>
     jsonEncode({
       't': 'here',
@@ -65,6 +76,9 @@ String buildHere({
       'name': info.name,
       'os': info.os,
       'port': port,
+      // Present only while the office gateway is on.
+      'gateway': ?(gatewayAddresses == null ? null : true),
+      'gw_addresses': ?gatewayAddresses,
     });
 
 bool isDiscover(String text) {
@@ -99,9 +113,20 @@ DiscoveredPeer? parseHere(String text, String sourceHost, {DateTime? now}) {
     return v.length <= max ? v : v.substring(0, max);
   }
 
+  final gw = j['gateway'] == true;
+  final rawGw = j['gw_addresses'];
+  // Only well-formed addresses survive; a reply is unauthenticated.
+  final gwAddresses = gw && rawGw is List
+      ? [
+          for (final a in rawGw.whereType<String>().take(8)) ?NetAddress.parse(a)?.hostPort,
+        ]
+      : <String>[];
+
   return DiscoveredPeer(
     id: id,
     key: key,
+    gateway: gw && gwAddresses.isNotEmpty,
+    gatewayAddresses: gwAddresses,
     name: clip(j['name'], 64, 'Unknown'),
     os: clip(j['os'], 16, 'unknown'),
     host: sourceHost,
@@ -125,6 +150,10 @@ class LanDiscovery extends ChangeNotifier {
   final Identity identity;
   final LocalPeerInfo Function() localInfo;
   final int Function() signalingPort;
+
+  /// The addresses to advertise as an office gateway, or null while the
+  /// gateway is off (set by the session manager).
+  List<String>? Function() gatewayAdvertisement = () => null;
   final int discoveryPort;
   final Duration scanInterval;
   final Duration expiry;
@@ -145,6 +174,39 @@ class LanDiscovery extends ChangeNotifier {
   }
 
   bool get isResponding => _responder != null;
+
+  /// Discovered devices that offer to be a gateway.
+  List<DiscoveredPeer> get gateways => [
+        for (final p in peers)
+          if (p.gateway) p,
+      ];
+
+  /// The device [id] on this network: from the table when the entry is at
+  /// most [maxAge] old, otherwise after a fresh scan of up to [wait].
+  Future<DiscoveredPeer?> find(
+    String id, {
+    Duration maxAge = const Duration(seconds: 15),
+    Duration wait = const Duration(seconds: 2),
+  }) async {
+    DiscoveredPeer? fresh() {
+      final p = _peers[id];
+      if (p == null) return null;
+      return DateTime.now().difference(p.lastSeen) <= maxAge ? p : null;
+    }
+
+    final cached = fresh();
+    if (cached != null) return cached;
+    final deadline = DateTime.now().add(wait);
+    final started = DateTime.now();
+    unawaited(scanNow());
+    while (DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final p = _peers[id];
+      // Only a reply that arrived after this call counts.
+      if (p != null && !p.lastSeen.isBefore(started)) return p;
+    }
+    return null;
+  }
 
   /// Starts answering broadcasts. Failure (port in use, no permission) is
   /// logged and tolerated: the device simply is not discoverable.
@@ -190,7 +252,12 @@ class LanDiscovery extends ChangeNotifier {
       _repliesThisSecond = 0;
     }
     if (++_repliesThisSecond > 20) return;
-    final reply = buildHere(identity: identity, info: localInfo(), port: signalingPort());
+    final reply = buildHere(
+      identity: identity,
+      info: localInfo(),
+      port: signalingPort(),
+      gatewayAddresses: gatewayAdvertisement(),
+    );
     socket.send(utf8.encode(reply), d.address, d.port);
   }
 
@@ -244,8 +311,17 @@ class LanDiscovery extends ChangeNotifier {
     }
   }
 
+  /// Feeds a reply as if it had arrived from [host] (tests).
+  @visibleForTesting
+  void debugReply(String text, String host) {
+    final peer = parseHere(text, host);
+    if (peer == null || peer.id == identity.id) return;
+    _peers[peer.id] = peer;
+    notifyListeners();
+  }
+
   void _onReply(Datagram d) {
-    if (d.data.length > 1024) return;
+    if (d.data.length > 2048) return;
     final String text;
     try {
       text = utf8.decode(d.data);
@@ -259,7 +335,9 @@ class LanDiscovery extends ChangeNotifier {
     if (known == null ||
         known.name != peer.name ||
         known.host != peer.host ||
-        known.port != peer.port) {
+        known.port != peer.port ||
+        known.gateway != peer.gateway ||
+        known.gatewayAddresses.join(',') != peer.gatewayAddresses.join(',')) {
       notifyListeners();
     }
   }

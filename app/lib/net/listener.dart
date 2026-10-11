@@ -6,8 +6,10 @@ import 'package:uuid/uuid.dart';
 
 import '../core/identity.dart';
 import '../core/log.dart';
+import '../core/thelxis_id.dart';
 import '../protocol/signaling_messages.dart';
 import 'connectivity/connectivity.dart';
+import 'gateway.dart';
 import 'handshake.dart';
 import 'peer_identity.dart';
 import 'signaling_channel.dart';
@@ -66,6 +68,10 @@ class SignalingListener {
   final Duration handshakeTimeout;
   final int maxUnauthPerIp;
   final int maxHandshakesPerMinute;
+
+  /// Serves `/thelxis/via/<ID>` while the office gateway is on; null answers
+  /// such requests with 404, exactly like any unknown path.
+  GatewayHandler? gatewayHandler;
 
   final _incoming = StreamController<IncomingPeer>.broadcast();
   final Map<String, SignalingChannel> _live = {};
@@ -136,7 +142,9 @@ class SignalingListener {
 
   Future<void> _handleRequest(HttpRequest req) async {
     final ip = _remoteIp(req);
-    if (req.uri.path != '/thelxis' || !WebSocketTransformer.isUpgradeRequest(req)) {
+    final viaId = _viaTarget(req.uri.path);
+    final isGateway = viaId != null && gatewayHandler != null;
+    if ((req.uri.path != '/thelxis' && !isGateway) || !WebSocketTransformer.isUpgradeRequest(req)) {
       req.response.statusCode = HttpStatus.notFound;
       await req.response.close();
       return;
@@ -149,6 +157,16 @@ class SignalingListener {
       );
     } on Object catch (e) {
       _log.d('upgrade failed: $e');
+      return;
+    }
+    if (isGateway) {
+      // Same rate limits as handshakes; the pipe itself is limited by the gateway.
+      if (!_admitConnection(ip)) {
+        socket.add('{"t":"error","code":"rate_limited","message":"Too many connections"}');
+        unawaited(socket.close(WebSocketStatus.policyViolation, 'rate_limited'));
+        return;
+      }
+      await gatewayHandler!(socket, viaId, ip);
       return;
     }
     final peer = WsPeer(socket, remoteIp: ip);
@@ -302,6 +320,17 @@ class SignalingListener {
       dialed: hello.dialed,
       grant: grant,
     );
+  }
+
+  /// The target ID of `/thelxis/via/<ID>` (dashes allowed), or null.
+  static String? _viaTarget(String path) {
+    const prefix = '/thelxis/via/';
+    if (!path.startsWith(prefix)) return null;
+    try {
+      return parseThelxisId(Uri.decodeComponent(path.substring(prefix.length)));
+    } on ArgumentError {
+      return null;
+    }
   }
 
   static String _remoteIp(HttpRequest req) {

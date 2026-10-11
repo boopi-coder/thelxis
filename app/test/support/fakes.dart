@@ -23,6 +23,7 @@ class FakeConnectivity implements Connectivity {
   ManualForwarding? manualForwarding;
   final List<ManualForwarding?> manualHistory = [];
   final List<bool> gatewayGrants = [];
+  final List<String?> dialedAddresses = [];
   int _n = 0;
 
   /// Publishes a connectivity snapshot (tests drive the reachability UI).
@@ -66,11 +67,13 @@ class FakeConnectivity implements Connectivity {
     bool gateway = false,
   }) {
     gatewayGrants.add(gateway);
+    dialedAddresses.add(dialedAddress);
     final g = TurnGrant(
       username: 'user${_n++}',
       credential: 'cred',
-      udpPort: 47100,
-      tcpPort: 47101,
+      // Gateway grants carry other ports so tests can tell them apart.
+      udpPort: gateway ? 47200 : 47100,
+      tcpPort: gateway ? 47201 : 47101,
       expiresAt: DateTime.now().add(ttl),
     );
     issued.add(g);

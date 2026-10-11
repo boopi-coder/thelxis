@@ -4,7 +4,17 @@ import 'connectivity/connectivity.dart';
 
 /// A network location of a listener's signaling port (PROTOCOL.md section 3).
 class NetAddress {
-  const NetAddress(this.host, this.port);
+  const NetAddress(this.host, this.port, {this.viaId});
+
+  /// Set for an office-gateway route (PROTOCOL.md section 11): [host]:[port]
+  /// is the gateway, and the connection is piped to the device with this
+  /// (normalised) Thelxis ID.
+  final String? viaId;
+
+  bool get isViaGateway => viaId != null;
+
+  /// The same gateway address as a route to the device [id].
+  NetAddress viaTarget(String id) => NetAddress(host, port, viaId: id);
 
   /// IPv4/IPv6 literal (without brackets) or DNS name.
   final String host;
@@ -18,8 +28,12 @@ class NetAddress {
   /// `host` as it must appear in a URL host position (v6 bracketed).
   String get urlHost => isIPv6 ? '[$host]' : host;
 
-  Uri get signalingUri =>
-      Uri(scheme: 'ws', host: host, port: port, path: '/thelxis');
+  Uri get signalingUri => Uri(
+        scheme: 'ws',
+        host: host,
+        port: port,
+        path: viaId == null ? '/thelxis' : '/thelxis/via/$viaId',
+      );
 
   /// Parses `host`, `host:port`, `[v6]`, `[v6]:port` or a bare IPv6 literal.
   /// Returns null for anything that is not a plausible address.
@@ -92,13 +106,13 @@ class NetAddress {
 
   @override
   bool operator ==(Object other) =>
-      other is NetAddress && other.host == host && other.port == port;
+      other is NetAddress && other.host == host && other.port == port && other.viaId == viaId;
 
   @override
-  int get hashCode => Object.hash(host, port);
+  int get hashCode => Object.hash(host, port, viaId);
 
   @override
-  String toString() => hostPort;
+  String toString() => viaId == null ? hostPort : '$hostPort/via/$viaId';
 }
 
 /// Parses a list of address strings, dropping invalid ones and duplicates.

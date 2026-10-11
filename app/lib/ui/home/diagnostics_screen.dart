@@ -3,23 +3,46 @@ import 'package:provider/provider.dart';
 
 import '../../core/settings.dart';
 import '../../net/connectivity/connectivity.dart';
+import '../../net/discovery.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../shell_controller.dart';
+import 'connect_by_code_dialog.dart';
 import 'reachability_advice.dart';
 import 'reachability_card.dart';
 import '../../l10n/strings.dart';
 
 /// Connectivity diagnostics: LAN IPs, IPv6, router / UPnP status, external IP,
 /// CGNAT warning, mapped ports, problems.
-class DiagnosticsScreen extends StatelessWidget {
+class DiagnosticsScreen extends StatefulWidget {
   const DiagnosticsScreen({super.key});
+
+  @override
+  State<DiagnosticsScreen> createState() => _DiagnosticsScreenState();
+}
+
+class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
+  LanDiscovery? _lan;
+
+  @override
+  void initState() {
+    super.initState();
+    // An office gateway on this network is part of the answer.
+    _lan = context.read<LanDiscovery>()..acquireBrowsing();
+  }
+
+  @override
+  void dispose() {
+    _lan?.releaseBrowsing();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final s = context.s;
     final connectivity = context.read<Connectivity>();
     final settings = context.watch<AppSettings>();
+    final gatewayName = context.watch<LanDiscovery>().gateways.firstOrNull?.name;
     return Scaffold(
       appBar: AppBar(
         title: Text(s.t('diag.title')),
@@ -38,6 +61,7 @@ class DiagnosticsScreen extends StatelessWidget {
             allowIncoming: settings.allowIncoming,
             report: r,
             upnpEnabled: settings.upnp,
+            gatewayName: gatewayName,
           );
           String yesNo(bool v) => v ? s.t('common.yes') : s.t('common.no');
           return PageScroll(
@@ -135,6 +159,8 @@ class DiagnosticsScreen extends StatelessWidget {
       case AdviceAction.manualForwarding:
         Navigator.of(context).pop();
         shell.goTo(ShellController.pageSettings);
+      case AdviceAction.connectByCode:
+        showConnectByCodeDialog(context);
       case AdviceAction.reverseConnection:
         Navigator.of(context).pop();
         shell.goTo(ShellController.pageHome);

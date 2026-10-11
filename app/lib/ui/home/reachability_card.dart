@@ -19,6 +19,7 @@ class ReachabilityAdviceCard extends StatelessWidget {
         AdviceAction.enableMapping => s.t('reach.action.enableMapping'),
         AdviceAction.manualForwarding => s.t('reach.action.manualForwarding'),
         AdviceAction.reverseConnection => s.t('connect.reverse'),
+        AdviceAction.connectByCode => s.t('code.title'),
         AdviceAction.rescan => s.t('diag.rescan'),
       };
 

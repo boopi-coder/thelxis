@@ -23,6 +23,7 @@ class AppSettings extends ChangeNotifier {
   // now ON, so existing installs must not inherit the old explicit value: the
   // setting lives under a new key and the old one is ignored.
   static const _kPublicStun = 'public_stun_v2';
+  static const _kGateway = 'office_gateway';
   static const _kManualFwd = 'manual_fwd';
   static const _kManualHost = 'manual_fwd_host';
   static const _kManualSignaling = 'manual_fwd_tcp';
@@ -56,6 +57,10 @@ class AppSettings extends ChangeNotifier {
   /// Add public STUN servers to ICE (PROTOCOL.md section 4.3). On by default:
   /// the servers learn the devices' IP:port, never any session data.
   bool get publicStun => _prefs.getBool(_kPublicStun) ?? true;
+
+  /// Office gateway (PROTOCOL.md section 11): other Thelxis devices on this
+  /// network become reachable from outside through this one. Off by default.
+  bool get officeGateway => _prefs.getBool(_kGateway) ?? false;
 
   /// The user forwarded ports on the router by hand (Settings -> Connectivity).
   bool get manualForwardingEnabled => _prefs.getBool(_kManualFwd) ?? false;
@@ -133,6 +138,7 @@ class AppSettings extends ChangeNotifier {
   Future<void> setUpnp(bool v) => _set(() => _prefs.setBool(_kUpnp, v));
   Future<void> setLanDiscovery(bool v) => _set(() => _prefs.setBool(_kLan, v));
   Future<void> setPublicStun(bool v) => _set(() => _prefs.setBool(_kPublicStun, v));
+  Future<void> setOfficeGateway(bool v) => _set(() => _prefs.setBool(_kGateway, v));
   Future<void> setManualForwardingEnabled(bool v) => _set(() => _prefs.setBool(_kManualFwd, v));
 
   /// Stores the manual forwarding details. Ports outside 1..65535 and hosts
