@@ -1,0 +1,76 @@
+name: E2E
+
+# Real-stack end-to-end tests: two peers in one process over loopback with the real libwebrtc, signed
+# handshake, data channels, embedded TURN and screen capture (on a virtual X display). Only hardware / OS
+# pieces (input injection, session badge, prompts) are replaced by recording fakes.
+#
+# Callable (workflow_call) so the release pipeline can require a green run before it publishes.
+
+on:
+  push:
+    branches: [main, 'e2e/**']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.47.7'
+
+jobs:
+  loopback:
+    name: Loopback session over real WebRTC
+    # Same image as the Linux release build: the prebuilt libwebrtc.so links against its libraries.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+
+      # Build dependencies identical to the Linux job in build.yml, plus a virtual X server for the GTK window and
+      # for libwebrtc's X11 screen capturer, and Mesa's software GL so Flutter can render without a GPU.
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            libx11-dev libxi-dev libpulse-dev \
+            libxtst-dev libxrandr-dev libxcomposite-dev libxdamage-dev libxfixes-dev libxext-dev libxrender-dev \
+            libasound2-dev libdrm-dev libgbm-dev \
+            xvfb x11-utils libgl1-mesa-dri libegl1 libgles2
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Run end-to-end tests
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/e2e"
+          xvfb-run -a -s "-screen 0 1280x800x24" \
+            flutter test integration_test -d linux --reporter expanded 2>&1 | tee "$RUNNER_TEMP/e2e/test.log"
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-logs
+          path: ${{ runner.temp }}/e2e/
+          if-no-files-found: ignore
+          retention-days: 7
