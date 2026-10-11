@@ -102,8 +102,8 @@ class WsPeer {
     // earlier hides that frame from dart:io, which then keeps the socket and a
     // five second timer alive.
     try {
-      await _socket.close(code, reason).timeout(const Duration(seconds: 2));
-      await _finished.future.timeout(const Duration(seconds: 2));
+      await Future.wait<void>([_socket.close(code, reason), _finished.future])
+          .timeout(const Duration(seconds: 2));
     } on Object {
       // The peer may already be gone; nothing to clean up.
     }

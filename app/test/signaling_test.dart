@@ -247,6 +247,35 @@ void main() {
     await raw.close();
   });
 
+  test('closing a peer finishes the close handshake and leaves no long timer behind', () async {
+    final longTimers = <Timer>[];
+    await runZoned(() async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final accepted = Completer<WsPeer>();
+      server.listen((req) async {
+        accepted.complete(WsPeer(await WebSocketTransformer.upgrade(req)));
+      });
+      final client = WsPeer(await WebSocket.connect('ws://127.0.0.1:${server.port}/'));
+      final peer = await accepted.future;
+      final clientSawClose = Completer<void>();
+      client.listen(onMessage: (_) {}, onClose: clientSawClose.complete);
+
+      await peer.close();
+      await clientSawClose.future.timeout(const Duration(seconds: 3));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    }, zoneSpecification: ZoneSpecification(
+      createTimer: (self, parent, zone, duration, f) {
+        final timer = parent.createTimer(zone, duration, f);
+        if (duration >= const Duration(seconds: 1)) longTimers.add(timer);
+        return timer;
+      },
+    ));
+    // dart:io arms a five second timer when it closes first and never sees the
+    // peer's close frame; cancelling the subscription early did exactly that.
+    expect(longTimers.where((t) => t.isActive), isEmpty);
+  });
+
   test('unauthenticated connection flood from one IP gets rate_limited', () async {
     final sockets = <WebSocket>[];
     final errors = <String>[];
