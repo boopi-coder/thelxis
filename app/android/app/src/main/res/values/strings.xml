@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Thelxis</string>
+
+    <string name="accessibility_service_label">Thelxis remote control</string>
+    <string name="accessibility_service_description">Lets devices you have authorized control this phone or tablet: Thelxis performs taps, swipes, scrolling, text entry and Back, Home and Recents actions on their behalf. It reads the focused text field only to insert typed text, and never stores screen content.</string>
+
+    <string name="capture_channel_name">Screen sharing</string>
+    <string name="capture_notification_title">Thelxis: screen is being shared</string>
+    <string name="capture_notification_text">A device you authorized can see this screen.</string>
+    <string name="capture_notification_stop">Stop</string>
+
+    <string name="presence_channel_name">Availability</string>
+    <string name="presence_notification_title">Thelxis is available</string>
+    <string name="presence_notification_text">Incoming remote connections are allowed.</string>
+</resources>
