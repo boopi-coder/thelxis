@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the updater's download folder is shareable with the package installer.
+     path_provider's getApplicationSupportDirectory() is Context.filesDir on Android,
+     so <filesDir>/updates/ is "updates/" below. -->
+<paths>
+    <files-path name="updates" path="updates/" />
+</paths>

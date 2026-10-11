@@ -5,6 +5,8 @@ import io.flutter.embedding.engine.FlutterEngine
 
 class MainActivity : FlutterActivity() {
     private var host: HostChannel? = null
+    private var badge: BadgeChannel? = null
+    private var updater: UpdaterChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         // Registers the generated plugins (flutter_webrtc, ...).
@@ -12,11 +14,17 @@ class MainActivity : FlutterActivity() {
         val channel = HostChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         channel.activity = this
         host = channel
+        badge = BadgeChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
+        updater = UpdaterChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         host?.dispose()
         host = null
+        badge?.dispose()
+        badge = null
+        updater?.dispose()
+        updater = null
         // With the engine gone nothing listens or captures any more, so the
         // "available" / "screen is being shared" notifications would be a lie.
         if (!isChangingConfigurations) {

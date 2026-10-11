@@ -140,6 +140,14 @@ class HostChannel(
                 appContext.startActivity(intent)
                 result.success(null)
             }
+            "canDrawOverlays" -> result.success(Settings.canDrawOverlays(appContext))
+            "requestOverlayPermission" -> {
+                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                    .setData(Uri.fromParts("package", appContext.packageName, null))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                appContext.startActivity(intent)
+                result.success(null)
+            }
             "notificationsGranted" -> result.success(notificationsGranted())
             "requestNotifications" -> requestNotifications(result)
 

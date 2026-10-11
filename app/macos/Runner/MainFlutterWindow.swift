@@ -11,6 +11,7 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     HostChannel.register(with: flutterViewController.engine.binaryMessenger)
+    SessionBadgeController.register(with: flutterViewController.engine.binaryMessenger)
 
     super.awakeFromNib()
   }
@@ -50,8 +51,32 @@ enum HostChannel {
           HostChannel.openPane("Privacy_Accessibility")
         }
         result(trusted)
+      case "setDockIconVisible":
+        let args = call.arguments as? [String: Any]
+        HostChannel.setDockIconVisible(args?["visible"] as? Bool ?? true)
+        result(nil)
       default:
         result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  /// Tray mode: `.accessory` removes the Dock icon and menu bar while the window
+  /// is hidden; `.regular` brings them back and puts the Flutter window in front.
+  /// Separate windows such as the session badge are unaffected by the policy.
+  private static func setDockIconVisible(_ visible: Bool) {
+    DispatchQueue.main.async {
+      if visible {
+        _ = NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        for window in NSApp.windows where window is MainFlutterWindow {
+          if window.isMiniaturized {
+            window.deminiaturize(nil)
+          }
+          window.makeKeyAndOrderFront(nil)
+        }
+      } else {
+        _ = NSApp.setActivationPolicy(.accessory)
       }
     }
   }

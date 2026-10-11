@@ -53,6 +53,10 @@ class PresenceService : Service() {
                 return
             }
             context.stopService(Intent(context, PresenceService::class.java))
+            // The system orders this stop before a following start(); the flags
+            // must not make that start() look redundant.
+            running = false
+            starting = false
         }
     }
 
@@ -74,6 +78,7 @@ class PresenceService : Service() {
             starting = false
             if (cancelRequested) {
                 cancelRequested = false
+                running = false
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }

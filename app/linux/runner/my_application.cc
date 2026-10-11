@@ -6,13 +6,27 @@
 #endif
 
 #include "flutter/generated_plugin_registrant.h"
+#include "session_badge.h"
 
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
+  SessionBadge* badge;
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
+
+static gboolean has_argument(char** arguments, const char* wanted) {
+  if (arguments == nullptr) {
+    return FALSE;
+  }
+  for (char** it = arguments; *it != nullptr; ++it) {
+    if (g_strcmp0(*it, wanted) == 0) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
 
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
@@ -79,11 +93,23 @@ static void my_application_activate(GApplication* application) {
 
   // Show the window when Flutter renders.
   // Requires the view to be realized so we can start rendering.
-  g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb),
-                           self);
+  // A launch with --minimized (start at login into the tray) never shows the
+  // window by itself; the view is still realized so Flutter keeps running.
+  if (!has_argument(self->dart_entrypoint_arguments, "--minimized")) {
+    g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb),
+                             self);
+  }
   gtk_widget_realize(GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+
+  // The mandatory "being controlled" badge is a window of its own, so it keeps
+  // working while the main window is hidden in the tray.
+  g_autoptr(FlPluginRegistrar) badge_registrar =
+      fl_plugin_registry_get_registrar_for_plugin(FL_PLUGIN_REGISTRY(view),
+                                                  "ThelxisSessionBadge");
+  self->badge =
+      session_badge_new(fl_plugin_registrar_get_messenger(badge_registrar));
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
@@ -100,6 +126,15 @@ static gboolean my_application_local_command_line(GApplication* application,
   if (!g_application_register(application, nullptr, &error)) {
     g_warning("Failed to register: %s", error->message);
     *exit_status = 1;
+    return TRUE;
+  }
+
+  // Single instance: when another process already owns the application id,
+  // this one only forwards an "activate" so the running window is raised. A
+  // launch with --minimized (start at login) must not raise anything.
+  if (g_application_get_is_remote(application) &&
+      has_argument(self->dart_entrypoint_arguments, "--minimized")) {
+    *exit_status = 0;
     return TRUE;
   }
 
@@ -131,6 +166,10 @@ static void my_application_shutdown(GApplication* application) {
 static void my_application_dispose(GObject* object) {
   MyApplication* self = MY_APPLICATION(object);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
+  if (self->badge != nullptr) {
+    session_badge_free(self->badge);
+    self->badge = nullptr;
+  }
   G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
 }
 
@@ -152,7 +191,10 @@ MyApplication* my_application_new() {
   // the application to be recognized beyond its binary name.
   g_set_prgname(APPLICATION_ID);
 
+  // Unique application id (no G_APPLICATION_NON_UNIQUE): a second launch is
+  // forwarded to the running instance, see local_command_line.
   return MY_APPLICATION(g_object_new(my_application_get_type(),
                                      "application-id", APPLICATION_ID, "flags",
-                                     G_APPLICATION_NON_UNIQUE, nullptr));
+                                     static_cast<GApplicationFlags>(0),
+                                     nullptr));
 }

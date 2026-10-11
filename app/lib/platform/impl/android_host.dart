@@ -221,6 +221,27 @@ class AndroidHostPlatform implements HostPlatform {
     }
   }
 
+  /// Whether the "display over other apps" permission is granted. Without it
+  /// the session badge falls back to the ongoing screen-sharing notification
+  /// (which also shows who is connected and the elapsed time).
+  Future<bool> canDrawOverlays() async {
+    try {
+      return await _channel.invokeMethod<bool>('canDrawOverlays') ?? false;
+    } catch (e) {
+      implLog('canDrawOverlays failed', e);
+      return false;
+    }
+  }
+
+  /// Opens the system screen where the user grants "display over other apps".
+  Future<void> requestOverlayPermission() async {
+    try {
+      await _channel.invokeMethod<void>('requestOverlayPermission');
+    } catch (e) {
+      implLog('requestOverlayPermission failed', e);
+    }
+  }
+
   /// Wi-Fi multicast lock: without it Android filters incoming multicast and
   /// broadcast datagrams to save power, which breaks SSDP/UPnP replies and
   /// LAN discovery. Hold it while discovery or port mapping runs.

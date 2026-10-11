@@ -359,6 +359,20 @@ class MacosHostPlatform implements HostPlatform {
     );
   }
 
+  /// Tray mode: hides (false) or restores (true) the Dock icon and the app
+  /// menu by switching the activation policy to accessory/regular. Showing
+  /// again also activates the app and brings the Flutter window to the front.
+  /// The session badge keeps working while the Dock icon is hidden.
+  Future<void> setDockIconVisible(bool visible) async {
+    try {
+      await _channel.invokeMethod<void>('setDockIconVisible', {
+        'visible': visible,
+      });
+    } catch (e) {
+      implLog('setDockIconVisible failed', e);
+    }
+  }
+
   @override
   Future<void> beforeCapture() async {}
 

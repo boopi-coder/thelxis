@@ -76,6 +76,67 @@ class CaptureService : Service() {
                 return
             }
             context.stopService(Intent(context, CaptureService::class.java))
+            // Order against a quick start() is guaranteed by the system; the
+            // flags must not claim "running" for a service that is going away.
+            running = false
+            starting = false
+        }
+
+        // What the notification says about the live session (set by the badge
+        // channel). Doubles as the indicator when the overlay badge cannot be
+        // shown because "display over other apps" is not granted.
+        @Volatile
+        private var badgeLabel: String? = null
+
+        @Volatile
+        private var badgeSinceMs = 0L
+
+        /**
+         * Shows who is connected and a running timer in the screen-sharing
+         * notification. Pass a null [label] to restore the default text.
+         */
+        fun updateBadge(context: Context, label: String?, sinceMs: Long) {
+            badgeLabel = label
+            badgeSinceMs = sinceMs
+            if (!running) return
+            val manager = context.getSystemService(NotificationManager::class.java) ?: return
+            manager.notify(NOTIFICATION_ID, buildNotification(context))
+        }
+
+        @Suppress("DEPRECATION")
+        private fun buildNotification(context: Context): Notification {
+            Notifications.ensureChannel(
+                context,
+                CHANNEL_ID,
+                context.getString(R.string.capture_channel_name),
+                NotificationManager.IMPORTANCE_LOW,
+            )
+            val stop = PendingIntent.getService(
+                context,
+                1,
+                Intent(context, CaptureService::class.java).setAction(ACTION_STOP),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val label = badgeLabel
+            val since = badgeSinceMs
+            val builder = Notifications.builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_stat_thelxis)
+                .setContentTitle(context.getString(R.string.capture_notification_title))
+                .setContentText(label ?: context.getString(R.string.capture_notification_text))
+                .setCategory(Notification.CATEGORY_SERVICE)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .addAction(0, context.getString(R.string.capture_notification_stop), stop)
+            if (label != null && since > 0L) {
+                builder.setShowWhen(true).setWhen(since).setUsesChronometer(true)
+            } else {
+                builder.setShowWhen(false)
+            }
+            Notifications.openAppIntent(context)?.let { builder.setContentIntent(it) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+            }
+            return builder.build()
         }
 
         private fun completePending(ok: Boolean, code: String, message: String?) {
@@ -92,12 +153,13 @@ class CaptureService : Service() {
         if (intent?.action == ACTION_STOP) {
             // Tell Dart first so the session can end cleanly, then go away.
             HostChannel.current?.emitCaptureStopRequested()
+            running = false
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
         try {
-            val notification = buildNotification()
+            val notification = buildNotification(this)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
                     NOTIFICATION_ID,
@@ -111,6 +173,7 @@ class CaptureService : Service() {
             starting = false
             if (cancelRequested) {
                 cancelRequested = false
+                running = false
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
@@ -130,36 +193,8 @@ class CaptureService : Service() {
         running = false
         starting = false
         cancelRequested = false
+        badgeLabel = null
+        badgeSinceMs = 0L
         super.onDestroy()
-    }
-
-    @Suppress("DEPRECATION")
-    private fun buildNotification(): Notification {
-        Notifications.ensureChannel(
-            this,
-            CHANNEL_ID,
-            getString(R.string.capture_channel_name),
-            NotificationManager.IMPORTANCE_LOW,
-        )
-        val stop = PendingIntent.getService(
-            this,
-            1,
-            Intent(this, CaptureService::class.java).setAction(ACTION_STOP),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-        val builder = Notifications.builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_thelxis)
-            .setContentTitle(getString(R.string.capture_notification_title))
-            .setContentText(getString(R.string.capture_notification_text))
-            .setCategory(Notification.CATEGORY_SERVICE)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setShowWhen(false)
-            .addAction(0, getString(R.string.capture_notification_stop), stop)
-        Notifications.openAppIntent(this)?.let { builder.setContentIntent(it) }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
-        }
-        return builder.build()
     }
 }

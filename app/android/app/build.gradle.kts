@@ -83,6 +83,12 @@ android {
     }
 }
 
+dependencies {
+    // FileProvider for handing downloaded update APKs to the package installer.
+    // Declared explicitly instead of relying on a transitive copy.
+    implementation("androidx.core:core:1.15.0")
+}
+
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
