@@ -127,6 +127,19 @@ bool looksLikeConnectionCode(String text) {
   return t.startsWith(kOfferPrefix) || t.startsWith(kAnswerPrefix);
 }
 
+/// Whether [text] decodes as a connection code with [prefix]. Structure only:
+/// no signature or expiry check, which the code flow does (and explains)
+/// itself; a code from a newer protocol version counts, so the flow can say
+/// "unsupported" instead of the scanner rejecting it as foreign.
+bool isDecodableCode(String text, String prefix) {
+  try {
+    _unpack(text, prefix);
+    return true;
+  } on CodeException catch (e) {
+    return e.error == CodeError.unsupported;
+  }
+}
+
 String offerSignaturePayload({required String nonce, required int exp, required String sdp}) =>
     'thelxis-code-v1|offer|$nonce|$exp|$sdp';
 

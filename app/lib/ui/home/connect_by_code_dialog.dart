@@ -7,12 +7,14 @@ import 'package:provider/provider.dart';
 import '../../core/address_book.dart';
 import '../../l10n/strings.dart';
 import '../../net/connect_code.dart';
+import '../../net/scan_payload.dart';
 import '../../session/session_manager.dart';
 import '../../session/viewer_session.dart';
 import '../dialogs/prompt_dialogs.dart' show PeerCard;
 import '../shell_controller.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/qr_scanner_page.dart';
 import '../widgets/qr_view.dart';
 
 /// Codes up to this many characters are also shown as a QR code; longer ones
@@ -31,8 +33,12 @@ String codeErrorMessage(S s, CodeException e) => switch (e.error) {
 
 /// Opens "Connect by code" (PROTOCOL.md section 12). [initialCode] is a code
 /// that was pasted somewhere else (the Connect field): it starts in "I have a
-/// code" with the text filled in.
-Future<void> showConnectByCodeDialog(BuildContext context, {String? initialCode}) {
+/// code" with the text filled in. [scanQr] opens the QR scanner (Android).
+Future<void> showConnectByCodeDialog(
+  BuildContext context, {
+  String? initialCode,
+  QrScanLauncher scanQr = openQrScanner,
+}) {
   return showDialog<void>(
     context: context,
     builder: (_) => MultiProvider(
@@ -41,7 +47,7 @@ Future<void> showConnectByCodeDialog(BuildContext context, {String? initialCode}
         ChangeNotifierProvider<AddressBook>.value(value: context.read<AddressBook>()),
         ChangeNotifierProvider<ShellController>.value(value: context.read<ShellController>()),
       ],
-      child: ConnectByCodeDialog(initialCode: initialCode),
+      child: ConnectByCodeDialog(initialCode: initialCode, scanQr: scanQr),
     ),
   );
 }
@@ -49,9 +55,12 @@ Future<void> showConnectByCodeDialog(BuildContext context, {String? initialCode}
 enum _CodeMode { share, enter }
 
 class ConnectByCodeDialog extends StatefulWidget {
-  const ConnectByCodeDialog({super.key, this.initialCode});
+  const ConnectByCodeDialog({super.key, this.initialCode, this.scanQr = openQrScanner});
 
   final String? initialCode;
+
+  /// Opens the QR scanner (Android); replaced in tests.
+  final QrScanLauncher scanQr;
 
   @override
   State<ConnectByCodeDialog> createState() => _ConnectByCodeDialogState();
@@ -110,6 +119,40 @@ class _ConnectByCodeDialogState extends State<ConnectByCodeDialog> {
       c.text = text;
       _error = null;
     });
+  }
+
+  /// Fills [c] with a scanned code of [kind] and runs the step it is for, as
+  /// if it had been pasted and the button pressed.
+  Future<void> _scan(TextEditingController c, ScanKind kind, Future<void> Function() then) async {
+    final text = await widget.scanQr(context, {kind});
+    if (text == null || !mounted) return;
+    setState(() {
+      c.text = text;
+      _error = null;
+    });
+    await then();
+  }
+
+  /// Scan and paste buttons for a code field.
+  Widget _fieldActions(BuildContext context, TextEditingController c, String scanKey, VoidCallback onScan) {
+    final s = context.s;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (qrScanSupported)
+          IconButton(
+            key: ValueKey(scanKey),
+            tooltip: s.t('scan.button'),
+            icon: const Icon(Icons.qr_code_scanner_rounded),
+            onPressed: _busy ? null : onScan,
+          ),
+        IconButton(
+          tooltip: s.t('connect.paste'),
+          icon: const Icon(Icons.content_paste_rounded),
+          onPressed: _busy ? null : () => _paste(c),
+        ),
+      ],
+    );
   }
 
   Future<void> _applyAnswer() async {
@@ -282,10 +325,14 @@ class _ConnectByCodeDialogState extends State<ConnectByCodeDialog> {
         maxLines: 3,
         decoration: InputDecoration(
           labelText: s.t('code.pasteAnswer'),
-          suffixIcon: IconButton(
-            tooltip: s.t('connect.paste'),
-            icon: const Icon(Icons.content_paste_rounded),
-            onPressed: _busy ? null : () => _paste(_answer),
+          suffixIcon: _fieldActions(
+            context,
+            _answer,
+            'code-answer-scan',
+            () => _scan(_answer, ScanKind.answer, () async {
+              // Like the disabled Apply button: an expired offer is only filled in.
+              if ((_offer?.remaining ?? Duration.zero) > Duration.zero) await _applyAnswer();
+            }),
           ),
         ),
       ),
@@ -324,10 +371,11 @@ class _ConnectByCodeDialogState extends State<ConnectByCodeDialog> {
         maxLines: 3,
         decoration: InputDecoration(
           labelText: s.t('code.pasteOffer'),
-          suffixIcon: IconButton(
-            tooltip: s.t('connect.paste'),
-            icon: const Icon(Icons.content_paste_rounded),
-            onPressed: _busy ? null : () => _paste(_offerText),
+          suffixIcon: _fieldActions(
+            context,
+            _offerText,
+            'code-offer-scan',
+            () => _scan(_offerText, ScanKind.offer, _answerOffer),
           ),
         ),
       ),

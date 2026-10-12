@@ -5,18 +5,23 @@ import 'package:provider/provider.dart';
 import '../../core/address_book.dart';
 import '../../net/connect_code.dart';
 import '../../net/connect_target.dart';
+import '../../net/scan_payload.dart';
 import 'connect_by_code_dialog.dart';
 import '../connect_actions.dart';
 import '../shell_controller.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/qr_scanner_page.dart';
 import '../widgets/surface.dart';
 import '../../l10n/strings.dart';
 
 /// Connect field (invite link, `ID@host[:port]`, `host[:port]`, connection
 /// code) with the primary action and the secondary ways to connect.
 class ConnectCard extends StatefulWidget {
-  const ConnectCard({super.key});
+  const ConnectCard({super.key, this.scanQr = openQrScanner});
+
+  /// Opens the QR scanner (Android); replaced in tests.
+  final QrScanLauncher scanQr;
 
   @override
   State<ConnectCard> createState() => _ConnectCardState();
@@ -50,12 +55,24 @@ class _ConnectCardState extends State<ConnectCard> {
     });
   }
 
+  /// A scanned invite (or offer code) is handled exactly like a pasted one,
+  /// then connected right away: scanning already was the deliberate step.
+  Future<void> _scan() async {
+    final text = await widget.scanQr(context, const {ScanKind.invite, ScanKind.offer});
+    if (text == null || !mounted) return;
+    setState(() {
+      _controller.text = text;
+      _error = null;
+    });
+    await _go();
+  }
+
   Future<void> _go({bool viewOnly = false, bool reverse = false}) async {
     // A pasted connection code goes to its own flow.
     if (looksLikeConnectionCode(_controller.text)) {
       final code = _controller.text;
       _controller.clear();
-      await showConnectByCodeDialog(context, initialCode: code);
+      await showConnectByCodeDialog(context, initialCode: code, scanQr: widget.scanQr);
       return;
     }
     final parsed = parseConnectInput(_controller.text);
@@ -124,10 +141,22 @@ class _ConnectCardState extends State<ConnectCard> {
               errorText: _error,
               errorMaxLines: 3,
               prefixIcon: const Icon(Icons.link_rounded, size: 18),
-              suffixIcon: IconButton(
-                tooltip: s.t('connect.paste'),
-                icon: const Icon(Icons.content_paste_rounded, size: 18),
-                onPressed: _busy ? null : _paste,
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (qrScanSupported)
+                    IconButton(
+                      key: const ValueKey('connect-scan'),
+                      tooltip: s.t('scan.button'),
+                      icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
+                      onPressed: _busy ? null : _scan,
+                    ),
+                  IconButton(
+                    tooltip: s.t('connect.paste'),
+                    icon: const Icon(Icons.content_paste_rounded, size: 18),
+                    onPressed: _busy ? null : _paste,
+                  ),
+                ],
               ),
             ),
           ),
@@ -189,7 +218,7 @@ class _ConnectCardState extends State<ConnectCard> {
                 key: const ValueKey('connect-by-code'),
                 onPressed: _busy
                     ? null
-                    : () => showConnectByCodeDialog(context),
+                    : () => showConnectByCodeDialog(context, scanQr: widget.scanQr),
                 icon: const Icon(Icons.vpn_key_outlined, size: 18),
                 label: Text(s.t('code.title')),
               ),

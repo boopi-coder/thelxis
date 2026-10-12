@@ -140,13 +140,47 @@ void main() {
     expect(find.byKey(const ValueKey('accessibility-guide')), findsOneWidget);
 
     native.accessibilityOn = true;
-    await tester.ensureVisible(find.byKey(const ValueKey('guide-recheck')));
-    await tester.tap(find.byKey(const ValueKey('guide-recheck')));
+    // Centred, not just on screen: at the bottom edge the phone navigation
+    // bar would take the tap.
+    final recheck = find.byKey(const ValueKey('guide-recheck'));
+    await Scrollable.ensureVisible(tester.element(recheck), alignment: 0.5);
+    await tester.pump();
+    // A missed tap must fail the test, not land elsewhere and pass by accident.
+    WidgetController.hitTestWarningShouldBeFatal = true;
+    addTearDown(() => WidgetController.hitTestWarningShouldBeFatal = false);
+    await tester.tap(recheck);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.byKey(const ValueKey('setup-card')), findsNothing);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('closed card: Settings still opens the restricted-settings guide', (tester) async {
+    final native = _FakeAndroid()..restrictedLikely = false;
+    await _pumpHome(tester, native);
+    await tester.tap(find.byKey(const ValueKey('setup-dismiss')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('setup-card')), findsNothing);
+
+    await tester.tap(find.text('Settings').first);
+    await tester.pumpAndSettle();
+    final row = find.byKey(const ValueKey('host-perms-row'));
+    expect(find.text('Screen capture: Asked at each connection · Input control: Not allowed'), findsOneWidget);
+    await tester.ensureVisible(row);
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    // The user came on purpose: the walk-through shows even when the block
+    // is not detected.
+    expect(find.byKey(const ValueKey('accessibility-guide')), findsOneWidget);
+
+    native.calls.clear();
+    await tester.ensureVisible(find.byKey(const ValueKey('guide-step2')));
+    await tester.tap(find.byKey(const ValueKey('guide-step2')));
+    await tester.pump();
+    expect(native.calls, contains('openAppDetails'));
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 5));
   });
 
   group('AndroidHostPlatform helpers', () {

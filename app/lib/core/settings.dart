@@ -42,6 +42,7 @@ class AppSettings extends ChangeNotifier {
   static const _kMouseButtonsY = 'mouse_buttons_y';
   static const _kHistory = 'history';
   static const _kLanguage = 'language';
+  static const _kSetupDismissed = 'setup_dismissed_perms';
 
   String get deviceName {
     final v = _prefs.getString(_kDeviceName);
@@ -145,6 +146,13 @@ class AppSettings extends ChangeNotifier {
     return v == 'en' || v == 'ru' ? v! : 'system';
   }
 
+  /// Names of the host permissions whose "Setup needed" hint the user closed.
+  /// The card stays hidden while every missing permission is in this set, so
+  /// a viewer-only device is never nagged again; a permission that goes
+  /// missing later and was never dismissed brings the card back.
+  Set<String> get dismissedSetupPermissions =>
+      (_prefs.getString(_kSetupDismissed) ?? '').split(',').where((p) => p.isNotEmpty).toSet();
+
   /// Raw JSON of the local session history (managed by SessionHistory).
   String? get historyJson => _prefs.getString(_kHistory);
 
@@ -199,6 +207,13 @@ class AppSettings extends ChangeNotifier {
         return _prefs.setDouble(_kMouseButtonsY, p.dy.clamp(0.0, 1.0));
       });
   Future<void> setHistoryJson(String v) => _prefs.setString(_kHistory, v);
+
+  /// Adds [names] to [dismissedSetupPermissions] (a union, so closing the
+  /// card for one permission never brings back another one closed earlier).
+  Future<void> dismissSetupPermissions(Iterable<String> names) => _set(() => _prefs.setString(
+        _kSetupDismissed,
+        ({...dismissedSetupPermissions, ...names}.toList()..sort()).join(','),
+      ));
 
   Future<void> setLanguage(String value) => _set(() => _prefs.setString(_kLanguage, value));
 

@@ -2,7 +2,7 @@ name: thelxis
 description: "Thelxis — modern remote desktop"
 publish_to: none
 
-version: 0.3.2+6
+version: 0.3.3+7
 
 environment:
   sdk: ^3.13.5
@@ -31,6 +31,9 @@ dependencies:
   url_launcher: ^6.3.3
   desktop_drop: ^0.8.4
   file_selector: ^1.1.0
+  # Android QR scanning of invite links and connection codes. Bundled ML Kit
+  # model (offline); see docs/ARCHITECTURE.md "Dependencies".
+  mobile_scanner: ^7.4.2
 
 dev_dependencies:
   flutter_test:

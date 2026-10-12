@@ -9,6 +9,7 @@ import '../../core/settings.dart';
 import '../../core/system_info.dart';
 import '../../desktop/desktop_integration.dart';
 import '../../l10n/strings.dart';
+import '../../platform/host_platform.dart';
 import '../../session/host_credentials.dart';
 import '../home/diagnostics_screen.dart';
 import '../../update/ui/update_settings_section.dart';
@@ -18,6 +19,7 @@ import '../widgets/common.dart';
 import '../widgets/rows.dart';
 import '../widgets/thelxis_logo.dart';
 import 'diagnostic_log_row.dart';
+import 'host_permissions_row.dart';
 import 'permanent_password_dialog.dart';
 import 'trusted_devices_section.dart';
 
@@ -49,6 +51,7 @@ class SettingsScreen extends StatelessWidget {
               padding: const EdgeInsets.all(Gap.l),
               child: _DeviceNameField(initial: st.deviceName, onSaved: st.setDeviceName),
             ),
+            if (context.read<HostPlatform>().hostSupported) const HostPermissionsRow(),
           ],
         ),
         gap,

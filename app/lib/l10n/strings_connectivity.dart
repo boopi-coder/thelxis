@@ -79,6 +79,9 @@ final Map<String, (String, String)> kConnectivityStrings = {
 
   // --- home: setup card and devices grid ---
   'setup.title': ('Setup needed', 'Требуется настройка'),
+  'setup.dismiss': ('Hide', 'Скрыть'),
+  'setup.dismiss.a11y': ('Hide the setup hint', 'Скрыть подсказку о настройке'),
+  'setup.dismissed': ('You can reopen this in Settings', 'Подсказку можно открыть снова в Настройках'),
   'home.devices.empty': ('No devices yet', 'Устройств пока нет'),
   'home.devices.empty.hint': (
     'Devices from your network and recent connections will appear here.',

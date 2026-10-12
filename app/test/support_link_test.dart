@@ -70,9 +70,13 @@ void main() {
       await tester.tap(find.text(s.t('nav.settings')).last);
       await tester.pump(const Duration(milliseconds: 450));
       final button = find.text(s.t('support.button'));
-      // Settings is a long lazy list: scroll to the end, where About lives.
-      await tester.drag(find.byType(ListView).first, const Offset(0, -20000));
-      await tester.pump();
+      // Settings is a long lazy list: scroll until About is built (one long
+      // drag stops at the extent estimated from the rows built so far).
+      await tester.scrollUntilVisible(
+        button,
+        600,
+        scrollable: find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first,
+      );
       await tester.ensureVisible(button);
       await tester.pump();
       expect(find.text(s.t('support.title')), findsOneWidget);

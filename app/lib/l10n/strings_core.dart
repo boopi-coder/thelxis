@@ -191,6 +191,26 @@ final Map<String, (String, String)> kCoreStrings = {
     'В ссылке-приглашении нет корректного Thelxis ID.',
   ),
 
+  // --- QR scanner (Android) ---
+  'scan.button': ('Scan QR code', 'Сканировать QR-код'),
+  'scan.title': ('Scan QR code', 'Сканирование QR-кода'),
+  'scan.hint': ('Point the camera at a Thelxis QR code', 'Наведите камеру на QR-код Thelxis'),
+  'scan.notThelxis': ('This is not a Thelxis QR code', 'Это не QR-код Thelxis'),
+  'scan.torchOn': ('Turn on the flashlight', 'Включить фонарик'),
+  'scan.torchOff': ('Turn off the flashlight', 'Выключить фонарик'),
+  'scan.denied.title': ('No access to the camera', 'Нет доступа к камере'),
+  'scan.denied.body': (
+    'Allow Thelxis to use the camera in the app settings to scan QR codes. The camera is only used to read the code; nothing is recorded or sent.',
+    'Разрешите Thelxis доступ к камере в настройках приложения, чтобы сканировать QR-коды. Камера нужна только для чтения кода: ничего не записывается и никуда не отправляется.',
+  ),
+  'scan.openSettings': ('Open settings', 'Открыть настройки'),
+  'scan.unavailable.title': ('The camera is unavailable', 'Камера недоступна'),
+  'scan.unavailable.body': (
+    'Another app may be using it, or this device has no camera. You can paste the link or code instead.',
+    'Возможно, она занята другим приложением или на устройстве нет камеры. Вместо этого можно вставить ссылку или код.',
+  ),
+  'scan.retry': ('Try again', 'Повторить'),
+
   // --- link path labels ---
   'path.lan': ('LAN', 'Локальная сеть'),
   'path.direct': ('Direct', 'Напрямую'),

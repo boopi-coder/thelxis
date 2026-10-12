@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/settings.dart';
 import '../../l10n/strings.dart';
 import '../../platform/host_platform.dart';
 import '../../platform/impl/android_host.dart';
 import '../../update/ui/update_banner.dart';
 import '../../update/update_service.dart';
 import '../theme.dart';
+import '../widgets/common.dart';
 import '../widgets/surface.dart';
 import 'accessibility_guide.dart';
+import 'host_permissions.dart';
 
 /// One compact "Setup needed" card above the devices grid: missing OS
 /// permissions and a pending update, as small rows. Draws nothing when
 /// nothing is needed.
+///
+/// The permission rows can be closed for good (a phone used only as a viewer
+/// never needs Accessibility); Settings keeps the same help reachable. See
+/// [AppSettings.dismissedSetupPermissions] for when they come back.
 class SetupCard extends StatefulWidget {
   const SetupCard({super.key});
 
@@ -21,17 +28,13 @@ class SetupCard extends StatefulWidget {
 }
 
 class _SetupCardState extends State<SetupCard> with WidgetsBindingObserver {
-  Future<List<HostPermission>>? _missing;
-
-  /// Android only: the accessibility switch is probably blocked as a
-  /// "Restricted setting" (see [AccessibilityGuide]).
-  bool _restrictedLikely = false;
+  Future<HostPermissionCheck>? _check;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _missing = _load();
+    _check = _load();
   }
 
   @override
@@ -49,35 +52,29 @@ class _SetupCardState extends State<SetupCard> with WidgetsBindingObserver {
   // A block body: setState must not be handed the Future that `=>` would return.
   void _reload() {
     setState(() {
-      _missing = _load();
+      _check = _load();
     });
   }
 
-  Future<List<HostPermission>> _load() async {
-    final platform = context.read<HostPlatform>();
-    if (!platform.hostSupported) return const [];
-    final out = <HostPermission>[];
-    for (final p in [HostPermission.screenCapture, HostPermission.inputControl]) {
-      try {
-        if (await platform.permissionStatus(p) == PermissionStatus.denied) out.add(p);
-      } on Object {
-        // An unavailable status check is not worth bothering the user about.
-      }
-    }
-    final android = platform is AndroidHostPlatform ? platform : null;
-    _restrictedLikely = android != null &&
-        out.contains(HostPermission.inputControl) &&
-        await android.isRestrictedSettingsLikely();
-    return out;
+  Future<HostPermissionCheck> _load() => checkHostPermissions(context.read<HostPlatform>());
+
+  void _dismiss(List<HostPermission> missing) {
+    context.read<AppSettings>().dismissSetupPermissions(missing.map((p) => p.name));
+    showMessage(context, context.s.t('setup.dismissed'));
   }
 
   @override
   Widget build(BuildContext context) {
     final updates = context.read<UpdateService>();
-    return FutureBuilder<List<HostPermission>>(
-      future: _missing,
+    final dismissed = context.watch<AppSettings>().dismissedSetupPermissions;
+    return FutureBuilder<HostPermissionCheck>(
+      future: _check,
       builder: (context, snap) {
-        final missing = snap.data ?? const <HostPermission>[];
+        final check = snap.data ?? const HostPermissionCheck();
+        final allMissing = check.missing;
+        // Hidden while every missing permission was closed before; one that
+        // was never closed brings back the whole list.
+        final missing = allMissing.every((p) => dismissed.contains(p.name)) ? const <HostPermission>[] : allMissing;
         return ListenableBuilder(
           listenable: updates,
           builder: (context, _) {
@@ -90,7 +87,7 @@ class _SetupCardState extends State<SetupCard> with WidgetsBindingObserver {
                 _PermissionRow(
                   permission: m,
                   android: context.read<HostPlatform>() is AndroidHostPlatform,
-                  guide: m == HostPermission.inputControl && _restrictedLikely
+                  guide: m == HostPermission.inputControl && check.restrictedLikely
                       ? AccessibilityGuide(
                           onOpenAccessibility: () => context.read<HostPlatform>().requestPermission(m),
                           onOpenAppInfo: () => (context.read<HostPlatform>() as AndroidHostPlatform).openAppDetails(),
@@ -117,7 +114,7 @@ class _SetupCardState extends State<SetupCard> with WidgetsBindingObserver {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(Gap.l, Gap.m, Gap.l, Gap.xs),
+                      padding: EdgeInsets.fromLTRB(Gap.l, Gap.m, missing.isEmpty ? Gap.l : Gap.s, Gap.xs),
                       child: Row(
                         children: [
                           Container(
@@ -126,10 +123,31 @@ class _SetupCardState extends State<SetupCard> with WidgetsBindingObserver {
                             decoration: const BoxDecoration(color: Color(0xFFFF9F0A), shape: BoxShape.circle),
                           ),
                           const SizedBox(width: Gap.s),
-                          Text(
-                            s.t('setup.title'),
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(color: c.text),
+                          Expanded(
+                            child: Text(
+                              s.t('setup.title'),
+                              style: Theme.of(context).textTheme.titleSmall?.copyWith(color: c.text),
+                            ),
                           ),
+                          // Closes the permission rows only; a pending update
+                          // has its own close button (it skips that version).
+                          if (missing.isNotEmpty)
+                            SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: IconButton(
+                                key: const ValueKey('setup-dismiss'),
+                                padding: EdgeInsets.zero,
+                                iconSize: 16,
+                                tooltip: s.t('setup.dismiss'),
+                                icon: Icon(
+                                  Icons.close_rounded,
+                                  color: c.textSecondary,
+                                  semanticLabel: s.t('setup.dismiss.a11y'),
+                                ),
+                                onPressed: () => _dismiss(missing),
+                              ),
+                            ),
                         ],
                       ),
                     ),

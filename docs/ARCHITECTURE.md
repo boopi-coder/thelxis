@@ -108,6 +108,18 @@ session tabs. Android: bottom navigation.
   reverse offer ("Bob offers you control of his PC"); first-contact ID confirmation (TOFU); identity-mismatch
   security warning.
 
+## Dependencies (notable)
+
+- **`mobile_scanner`** (Android only in practice) — scans the invite-link and connect-by-code QR codes the app
+  shows (`ui/widgets/qr_scanner_page.dart`; entry points next to the Paste buttons, Android only). Chosen because
+  it decodes with ML Kit's **bundled** barcode model (`com.google.mlkit:barcode-scanning`: model + native decoder
+  inside the APK, works offline, no Google Play Services model download). The bundled variant is the plugin's
+  default and is pinned with `dev.steenbakker.mobile_scanner.useUnbundled=false` in `android/gradle.properties`.
+  ML Kit also carries Google's usage-metrics logger (`com.google.android.datatransport`); `AndroidManifest.xml`
+  removes its only upload backend (`CctBackendFactory`), so queued events are dropped on the device instead of
+  being sent. The plugin also registers on macOS (unused there); it has no Windows/Linux part. Camera permission is
+  requested only when the scanner opens (`android.hardware.camera` is optional).
+
 ## Platform notes / known limits (v0.1)
 
 | | Host capture | Host input | Viewer | Notes |
