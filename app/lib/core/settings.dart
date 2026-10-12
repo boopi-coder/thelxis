@@ -37,6 +37,9 @@ class AppSettings extends ChangeNotifier {
   static const _kStartup = 'launch_at_startup';
   static const _kTouchMode = 'touch_mode';
   static const _kClipboardSync = 'clipboard_sync';
+  static const _kMouseButtons = 'mouse_buttons';
+  static const _kMouseButtonsX = 'mouse_buttons_x';
+  static const _kMouseButtonsY = 'mouse_buttons_y';
   static const _kHistory = 'history';
   static const _kLanguage = 'language';
 
@@ -125,6 +128,17 @@ class AppSettings extends ChangeNotifier {
 
   bool get clipboardSync => _prefs.getBool(_kClipboardSync) ?? true;
 
+  /// Android viewer: floating left / right mouse buttons over the picture.
+  bool get mouseButtons => _prefs.getBool(_kMouseButtons) ?? true;
+
+  /// Where the floating buttons sit, each axis 0..1 across the free room
+  /// (0 = left / top edge, 1 = right / bottom edge) so the spot survives
+  /// rotation and a different screen size. Defaults to the lower right.
+  Offset get mouseButtonsPosition => Offset(
+        (_prefs.getDouble(_kMouseButtonsX) ?? 0.96).clamp(0.0, 1.0),
+        (_prefs.getDouble(_kMouseButtonsY) ?? 0.72).clamp(0.0, 1.0),
+      );
+
   /// `system` (follow the OS), `en` or `ru`.
   String get language {
     final v = _prefs.getString(_kLanguage);
@@ -179,6 +193,11 @@ class AppSettings extends ChangeNotifier {
   Future<void> setLaunchAtStartup(bool v) => _set(() => _prefs.setBool(_kStartup, v));
   Future<void> setTouchMode(String v) => _set(() => _prefs.setString(_kTouchMode, v));
   Future<void> setClipboardSync(bool v) => _set(() => _prefs.setBool(_kClipboardSync, v));
+  Future<void> setMouseButtons(bool v) => _set(() => _prefs.setBool(_kMouseButtons, v));
+  Future<void> setMouseButtonsPosition(Offset p) => _set(() async {
+        await _prefs.setDouble(_kMouseButtonsX, p.dx.clamp(0.0, 1.0));
+        return _prefs.setDouble(_kMouseButtonsY, p.dy.clamp(0.0, 1.0));
+      });
   Future<void> setHistoryJson(String v) => _prefs.setString(_kHistory, v);
 
   Future<void> setLanguage(String value) => _set(() => _prefs.setString(_kLanguage, value));

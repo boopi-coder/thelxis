@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Thelxis</string>
+    <string name="app_name" translatable="false">Thelxis</string>
 
     <string name="accessibility_service_label">Thelxis remote control</string>
     <string name="accessibility_service_description">Lets devices you have authorized control this phone or tablet: Thelxis performs taps, swipes, scrolling, text entry and Back, Home and Recents actions on their behalf. It reads the focused text field only to insert typed text, and never stores screen content.</string>

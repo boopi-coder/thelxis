@@ -85,6 +85,17 @@ abstract class InputInjector {
   void releaseAll();
 }
 
+/// Optional capability of an [InputInjector] whose OS can silently refuse
+/// injected events (Windows UIPI: an elevated window or the secure desktop has
+/// focus). Kept apart from [InputInjector] so existing injectors need no change;
+/// the host checks `injector is InjectionReport`.
+abstract interface class InjectionReport {
+  /// True while the OS is rejecting injected events; clears as soon as an
+  /// injection (or a fresh check) succeeds. May do a cheap OS query: the host
+  /// polls it every few seconds, never per event.
+  bool get injectionRejected;
+}
+
 /// Everything the app needs from the OS to act as a host.
 abstract class HostPlatform {
   static final HostPlatform instance = impl.createHostPlatform();

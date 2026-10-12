@@ -7,6 +7,7 @@ import 'package:thelxis/core/log.dart';
 import 'package:thelxis/core/password_proof.dart';
 import 'package:thelxis/core/settings.dart';
 import 'package:thelxis/net/peer_identity.dart';
+import 'package:thelxis/protocol/control_messages.dart';
 import 'package:thelxis/protocol/models.dart';
 import 'package:thelxis/session/session_base.dart';
 import 'package:thelxis/session/viewer_session.dart';
@@ -268,6 +269,59 @@ void main() {
     await second;
     expect(session.isEnded, isTrue);
     expect(session.endReason, 'remote', reason: 'the first reason wins');
+  });
+
+  group('input_state (PROTOCOL.md 6.2)', () {
+    void inputState(Map<String, dynamic> m) => session.debugReceiveControl({'t': 'input_state', ...m});
+
+    test('the host reporting a missing permission or blocked input is exposed until it recovers', () {
+      hello(['request']);
+      authOk();
+      expect(session.inputIssue, isNull);
+      var notified = 0;
+      session.addListener(() => notified++);
+
+      inputState({'ok': false, 'reason': 'permission'});
+      expect(session.inputIssue, InputIssue.permission);
+      inputState({'ok': false, 'reason': 'blocked'});
+      expect(session.inputIssue, InputIssue.blocked);
+      inputState({'ok': true});
+      expect(session.inputIssue, isNull);
+      expect(notified, 3);
+    });
+
+    test('an unknown reason leaves the state alone', () {
+      hello(['request']);
+      authOk();
+      inputState({'ok': false, 'reason': 'permission'});
+      inputState({'ok': false, 'reason': 'solar_flare'});
+      expect(session.inputIssue, InputIssue.permission);
+    });
+
+    test('without control there is nothing to report', () {
+      hello(['request']);
+      authOk(perms: {'view': true, 'control': false, 'clipboard': false, 'files': false});
+      inputState({'ok': false, 'reason': 'permission'});
+      expect(session.inputIssue, isNull);
+    });
+
+    test('pausing control forgets the verdict; the host reports afresh when control resumes', () {
+      hello(['request']);
+      authOk();
+      inputState({'ok': false, 'reason': 'blocked'});
+      session.debugReceiveControl({
+        't': 'permissions',
+        'permissions': {'view': true, 'control': false, 'clipboard': true, 'files': true},
+      });
+      expect(session.inputIssue, isNull);
+      session.debugReceiveControl({
+        't': 'permissions',
+        'permissions': {'view': true, 'control': true, 'clipboard': true, 'files': true},
+      });
+      expect(session.inputIssue, isNull);
+      inputState({'ok': false, 'reason': 'blocked'});
+      expect(session.inputIssue, InputIssue.blocked);
+    });
   });
 
   test('debug seams are visible for testing only', () {

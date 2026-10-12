@@ -187,6 +187,28 @@ void main() {
     w.resolve(null);
   });
 
+  test('a device whose key differs from the remembered one is refused, never re-trusted', () async {
+    final stranger = await Identity.fromSeed(List<int>.filled(32, 99));
+    // Remembered entry: same ID, other key (what an ID collision would look like).
+    await viewer.book.upsertPeer(PeerIdentity(
+      key: stranger.publicKeyB64,
+      id: host.identity.id,
+      name: 'Host PC',
+      os: 'linux',
+    ));
+    for (final target in [
+      ConnectTarget(addresses: [host.address]),
+      ConnectTarget(id: host.identity.id, addresses: [host.address]),
+    ]) {
+      final warning = _nextPrompt<WarningPrompt>(viewer.manager.prompts);
+      await expectLater(viewer.manager.connect(target), throwsA(isA<ConnectException>()));
+      final w = await warning;
+      expect(w.title, 'Identity mismatch');
+      w.resolve(null);
+    }
+    expect(viewer.book.byId(host.identity.id)!.key, stranger.publicKeyB64, reason: 'the pin is not overwritten');
+  });
+
   test('an ID without any known address explains what to do', () async {
     await expectLater(
       viewer.manager.connect(const ConnectTarget(id: 'K7M2P9XQ4TAB8HDE')),

@@ -75,7 +75,12 @@ class HostRig {
     return s;
   }
 
-  Future<void> setUp({int displays = 1, Permissions? reverse}) async {
+  Future<void> setUp({
+    int displays = 1,
+    Permissions? reverse,
+    InputRecorder? recorder,
+    Duration inputCheckInterval = const Duration(seconds: 3),
+  }) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     hostId = await Identity.fromSeed(List<int>.filled(32, 11));
@@ -83,7 +88,7 @@ class HostRig {
     settings = AppSettings(prefs, defaultDeviceName: 'Host');
     trusted = TrustedDevices(prefs);
     creds = HostCredentials(identity: hostId, settings: settings);
-    input = InputRecorder();
+    input = recorder ?? InputRecorder();
     platform = FakeHostPlatform(displayCount: displays, injector: input);
     pair = await ChannelPair.create(self: hostId, peerKey: viewerId.publicKeyB64);
     session = HostSession(
@@ -114,6 +119,7 @@ class HostRig {
       channel: pair.channel,
       sid: 'test-sid',
       reversePermissions: reverse,
+      inputCheckInterval: inputCheckInterval,
     )
       ..debugControlTap = sent.add
       ..debugFingerprints = () async => (local: kFpLocal, remote: kFpRemote);

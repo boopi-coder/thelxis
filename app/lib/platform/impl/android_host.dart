@@ -221,6 +221,30 @@ class AndroidHostPlatform implements HostPlatform {
     }
   }
 
+  /// Opens the system "App info" page of Thelxis. Its top-right menu holds
+  /// "Allow restricted settings", which Android 13+ requires before the
+  /// accessibility switch of a sideloaded app becomes usable.
+  Future<void> openAppDetails() async {
+    try {
+      await _channel.invokeMethod<void>('openAppDetails');
+    } catch (e) {
+      implLog('openAppDetails failed', e);
+    }
+  }
+
+  /// Best-effort guess that the accessibility switch is blocked as a
+  /// "Restricted setting": Android 13+, service not enabled, app not installed
+  /// by a store. The OS has no public query for this, so false negatives are
+  /// possible and the UI must keep a hint reachable either way.
+  Future<bool> isRestrictedSettingsLikely() async {
+    try {
+      return await _channel.invokeMethod<bool>('isRestrictedSettingsLikely') ?? false;
+    } catch (e) {
+      implLog('isRestrictedSettingsLikely failed', e);
+      return false;
+    }
+  }
+
   /// Whether the "display over other apps" permission is granted. Without it
   /// the session badge falls back to the ongoing screen-sharing notification
   /// (which also shows who is connected and the elapsed time).

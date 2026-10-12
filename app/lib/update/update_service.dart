@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/log.dart';
+import '../core/log_file.dart';
 import 'downloader.dart';
 import 'installers/installer.dart';
 import 'manifest.dart';
@@ -79,7 +80,11 @@ class UpdateService extends ChangeNotifier {
   /// before assuming it was cancelled.
   final Duration handoffGrace;
 
-  static void _defaultExit() => exit(0);
+  static void _defaultExit() {
+    // "Exiting for update" is the line a failed update report needs most.
+    LogFile.instance?.flushSync();
+    exit(0);
+  }
 
   UpdateDependencies? _deps;
   UpdateState _state = UpdateState.idle;

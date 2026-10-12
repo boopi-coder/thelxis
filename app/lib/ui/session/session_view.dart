@@ -16,6 +16,8 @@ import '../shell_controller.dart';
 import 'connection_indicator.dart';
 import 'extra_keys_bar.dart';
 import 'files_slot.dart';
+import 'input_state_banner.dart';
+import 'mouse_buttons_overlay.dart';
 import 'remote_surface.dart';
 import 'session_overlays.dart';
 import 'session_toolbar.dart';
@@ -52,6 +54,7 @@ class _SessionViewState extends State<SessionView> {
   bool _keyboardOpen = false;
   bool _filesOpen = false;
   late TouchMode _touchMode;
+  late bool _mouseButtons;
   Size _viewport = Size.zero;
   Size _video = Size.zero;
 
@@ -61,6 +64,7 @@ class _SessionViewState extends State<SessionView> {
     _touchMode = context.read<AppSettings>().touchMode == 'direct'
         ? TouchMode.direct
         : TouchMode.touchpad;
+    _mouseButtons = context.read<AppSettings>().mouseButtons;
     _scheduleHide(const Duration(seconds: 5));
     // Phones: the remote screen gets the whole display.
     if (!_isDesktop) SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -129,6 +133,11 @@ class _SessionViewState extends State<SessionView> {
   void _setTouchMode(TouchMode mode) {
     setState(() => _touchMode = mode);
     unawaited(context.read<AppSettings>().setTouchMode(mode.name));
+  }
+
+  void _toggleMouseButtons() {
+    setState(() => _mouseButtons = !_mouseButtons);
+    unawaited(context.read<AppSettings>().setMouseButtons(_mouseButtons));
   }
 
   void _actualSize() {
@@ -201,6 +210,20 @@ class _SessionViewState extends State<SessionView> {
                           onClose: () => setState(() => _filesOpen = false),
                         ),
                       ),
+                    if (!isDesktop && _mouseButtons && !ended && !session.viewOnly && _hasPicture(session))
+                      Positioned.fill(
+                        child: MouseButtonsOverlay(
+                          encoder: session.encoder,
+                          cursor: _view.cursor,
+                          position: context.read<AppSettings>().mouseButtonsPosition,
+                          onPositionChanged: (p) =>
+                              unawaited(context.read<AppSettings>().setMouseButtonsPosition(p)),
+                          // Toolbar pill height plus its margin.
+                          topReserve: 56,
+                        ),
+                      ),
+                    if (!ended && _hasPicture(session))
+                      Positioned.fill(child: InputStateBanner(session: session)),
                     if (!ended) _toolbarLayer(context, session, desktop, shell, isDesktop),
                     if (_keyboardOpen && !isDesktop && !ended)
                       Positioned(
@@ -269,6 +292,8 @@ class _SessionViewState extends State<SessionView> {
                         filesOpen: _filesOpen,
                         onToggleFiles: _toggleFiles,
                         onTouchMode: _setTouchMode,
+                        mouseButtonsOn: _mouseButtons,
+                        onToggleMouseButtons: isDesktop ? null : _toggleMouseButtons,
                         onActualSize: _actualSize,
                         onEnd: _end,
                         onBack: isDesktop ? null : shell.showPages,

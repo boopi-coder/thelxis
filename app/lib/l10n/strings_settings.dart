@@ -123,6 +123,17 @@ final Map<String, (String, String)> kSettingsStrings = {
     'Устройства соединяются напрямую, всё защищено сквозным шифрованием. Ключ вашей личности никогда не покидает это устройство.',
   ),
 
+  'settings.log': ('Diagnostic log', 'Журнал диагностики'),
+  'settings.log.hint': (
+    'Kept only on this device and never sent anywhere. Attach it to a bug report.',
+    'Хранится только на этом устройстве и никуда не отправляется. Приложите его к сообщению об ошибке.',
+  ),
+  'settings.log.folder': ('Show in folder', 'Открыть папку'),
+  'settings.log.copy': ('Copy log', 'Скопировать журнал'),
+  'settings.log.clear': ('Clear', 'Очистить'),
+  'settings.log.cleared': ('Diagnostic log cleared', 'Журнал диагностики очищен'),
+  'settings.log.empty': ('The log is empty', 'Журнал пуст'),
+
   'support.title': ('Support the author', 'Поддержать автора'),
   'support.body': (
     'Thelxis is free and open source. Support on Boosty helps keep the project going and launch new ones.',

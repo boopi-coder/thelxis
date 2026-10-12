@@ -44,6 +44,9 @@ The TURN/STUN ports a peer must use are sent explicitly in §4.3, never assumed.
   - `ID@host[:port]` → connect and require that the peer's key matches the ID (mismatch = hard failure,
     "identity mismatch — possible interception").
   - `host[:port]` → trust-on-first-use: show the peer's ID and name and ask the user to confirm, then pin.
+  - Pinning keeps the full 32-byte `key`, not only the ID (since 0.3.2): once a device is remembered, a peer
+    with that ID but another key is a hard identity-mismatch failure on every later dial and resume, and is
+    never offered for re-confirmation. The host side already trusts devices by full key.
   - an **invite link** `thelxis://connect?id=<ID>&n=<url-encoded name>&a=<addr>,<addr>,…[&g=<gateway addr>,…]`
     (`g` = office gateways that can reach this device, §11).
   - a **connection code** `TX1.…` (§12).
@@ -155,8 +158,15 @@ V→H {"t":"quality","preset":"auto"|"speed"|"balanced"|"quality"}
 X→Y {"t":"clipboard","text":"…"}               only if permissions.clipboard; max 1 MiB
 X→Y {"t":"chat","text":"…"}
 H→V {"t":"permissions","permissions":{…}}      live change, e.g. control revoked
+H→V {"t":"input_state","ok":false,"reason":"permission"|"blocked"}   since 0.3.2, see below
 X→Y {"t":"bye","reason":"user"|"timeout"|"error"}
 ```
+`input_state` — the host cannot inject input although `permissions.control` is granted:
+`permission` = the OS grant is missing (macOS Accessibility, Android accessibility service),
+`blocked` = the OS rejected injected events (Windows: an elevated window or the secure desktop has focus).
+The host sends it when control starts and whenever the state changes, `{"t":"input_state","ok":true}` once
+input works again; it re-checks at least every 3 s while the problem lasts. The viewer shows a persistent
+banner while `ok` is false. Older peers ignore the message (unknown `t`).
 
 ### 6.3 Input (channel `input`, viewer → host, only if permissions.control)
 Coordinates are normalized to the active display (0.0–1.0, origin top-left).

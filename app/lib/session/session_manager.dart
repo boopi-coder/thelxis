@@ -686,15 +686,28 @@ class SessionManager extends ChangeNotifier {
       if (expected == null) {
         final probed = await dialer.probe(addresses);
         final known = addressBook.byId(probed.id);
-        final firstContact = known == null || known.key != probed.key;
-        if (firstContact) {
+        // Same ID, different key: an 80-bit ID collision crafted to pass as a
+        // known device. Never offer to trust it.
+        if (known?.key != null && known!.key != probed.key) {
+          throw DialException(
+            DialFailure.identityMismatch,
+            'The device at this address is not the one you expected.',
+            actualId: probed.id,
+          );
+        }
+        if (known?.key == null) {
           onAttention?.call();
           final ok = await prompts.push(FirstContactPrompt(peer: probed, address: addresses.first));
           if (!ok) throw ConnectException(S.current.t('err.cancelled'), cancelled: true);
         }
         expected = probed.id;
       }
-      final dial = await dialer.dial(addresses: addresses, want: want, expectedId: expected);
+      final dial = await dialer.dial(
+        addresses: addresses,
+        want: want,
+        expectedId: expected,
+        expectedKey: addressBook.byId(expected)?.key,
+      );
       await addressBook.upsertPeer(
         dial.peer,
         // Through a gateway the connected address is the gateway's, not the

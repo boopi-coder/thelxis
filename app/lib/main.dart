@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -9,6 +8,7 @@ import 'app.dart';
 import 'app_services.dart';
 import 'core/identity.dart';
 import 'core/log.dart';
+import 'core/log_file.dart';
 import 'core/system_info.dart';
 import 'desktop/desktop_impl.dart';
 import 'desktop/desktop_integration.dart';
@@ -26,6 +26,8 @@ Future<void> main(List<String> args) async {
 
 Future<void> _boot(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // First, so warnings from the rest of startup land in the diagnostic log.
+  await LogFile.start();
   FlutterError.onError = (details) {
     _log.e('flutter error: ${details.exceptionAsString()}', null, details.stack);
   };
@@ -67,5 +69,19 @@ Future<void> _boot(List<String> args) async {
   // Networking starts after the first frame so the window appears instantly.
   unawaited(services.sessions.start());
   unawaited(services.updates.start(updatedFlag: updated));
-  if (kDebugMode) _log.i('Thelxis ${systemInfo.appVersion} started, ID ${identity.formattedId}');
+  unawaited(_logEnvironment(systemInfo));
+}
+
+/// Startup header for the diagnostic log; permission queries are platform
+/// calls, so this runs after the first frame.
+Future<void> _logEnvironment(SystemInfo info) async {
+  final perms = <String, String>{};
+  for (final p in [HostPermission.screenCapture, HostPermission.inputControl]) {
+    try {
+      perms[p.name] = (await HostPlatform.instance.permissionStatus(p)).name;
+    } on Object {
+      perms[p.name] = 'unknown';
+    }
+  }
+  _log.i(environmentHeader(info, perms));
 }

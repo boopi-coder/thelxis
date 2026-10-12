@@ -33,6 +33,8 @@ sealed class ControlMessage {
         return text is String ? ChatMessage(text) : null;
       case 'permissions':
         return PermissionsMessage(Permissions.fromJson(json['permissions']));
+      case 'input_state':
+        return InputStateMessage.fromJson(json);
       case 'rtc':
         final data = json['data'];
         return data is Map ? RtcMessage(Map<String, dynamic>.from(data)) : null;
@@ -232,6 +234,52 @@ class PermissionsMessage extends ControlMessage {
   @override
   Map<String, dynamic> toJson() =>
       {'t': 'permissions', 'permissions': permissions.toJson()};
+}
+
+/// Why the host cannot inject input although control was granted
+/// (PROTOCOL.md 6.2 `input_state`).
+enum InputIssue {
+  /// The OS grant is missing (macOS Accessibility, Android accessibility service).
+  permission,
+
+  /// The OS rejects injected events (Windows: an elevated window or the secure
+  /// desktop has focus).
+  blocked;
+
+  static InputIssue? tryParse(Object? wire) {
+    for (final i in values) {
+      if (i.name == wire) return i;
+    }
+    return null;
+  }
+}
+
+/// `input_state` (host to viewer): input works again ([issue] null) or is
+/// failing for the given reason.
+class InputStateMessage extends ControlMessage {
+  const InputStateMessage.ok()
+      : issue = null,
+        ok = true;
+
+  const InputStateMessage.failing(InputIssue this.issue) : ok = false;
+
+  final bool ok;
+  final InputIssue? issue;
+
+  /// Null for `ok:false` with a reason this version does not know: callers
+  /// ignore it rather than guess what to tell the user.
+  static InputStateMessage? fromJson(Map json) {
+    if (json['ok'] == true) return const InputStateMessage.ok();
+    final issue = InputIssue.tryParse(json['reason']);
+    return issue == null ? null : InputStateMessage.failing(issue);
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+        't': 'input_state',
+        'ok': ok,
+        if (issue != null) 'reason': issue!.name,
+      };
 }
 
 class ByeMessage extends ControlMessage {

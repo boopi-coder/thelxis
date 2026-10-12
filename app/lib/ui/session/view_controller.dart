@@ -21,9 +21,20 @@ class ViewController extends ChangeNotifier {
   /// stays under the local pointer). Touch: pan and zoom are explicit.
   final bool followPointer;
 
+  /// Touch devices: the virtual remote cursor in normalised remote
+  /// coordinates. Lives here (not in the touch layer) so the on-screen mouse
+  /// buttons can press at the same spot the touch layer points to.
+  final ValueNotifier<Offset> cursor = ValueNotifier(const Offset(0.5, 0.5));
+
   FitMode _mode = FitMode.fit;
   ViewTransform _explicit = ViewTransform.identity;
   Offset _pointer = Offset.zero;
+
+  @override
+  void dispose() {
+    cursor.dispose();
+    super.dispose();
+  }
 
   FitMode get mode => _mode;
   ViewTransform get explicit => _explicit;

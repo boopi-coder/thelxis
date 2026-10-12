@@ -36,6 +36,30 @@ final Map<String, (String, String)> kConnectivityStrings = {
     'Если переключатель неактивен («Ограниченная настройка»): откройте Настройки → Приложения → Thelxis → ⋮ → «Разрешить ограниченные настройки», затем включите службу специальных возможностей.',
   ),
   'perm.grant': ('Grant', 'Разрешить'),
+  'perm.guide.intro': (
+    'Android blocks Accessibility for apps installed outside a store. Three steps unlock it:',
+    'Android блокирует «Специальные возможности» для приложений, установленных не из магазина. Это снимается за три шага:',
+  ),
+  'perm.guide.step1': (
+    'Open Accessibility and tap Thelxis once. If the switch is greyed out or says "Restricted setting", just go back.',
+    'Откройте «Специальные возможности» и один раз нажмите Thelxis. Если переключатель неактивен или написано «Ограниченная настройка», просто вернитесь.',
+  ),
+  'perm.guide.step1.btn': ('Open Accessibility', 'Открыть настройки'),
+  'perm.guide.step2': (
+    'Open App info, tap ⋮ (top right) → "Allow restricted settings" and confirm with your PIN. The item appears only after step 1.',
+    'Откройте «О приложении», нажмите ⋮ (справа вверху) → «Разрешить ограниченные настройки» и подтвердите PIN-кодом. Пункт появляется только после шага 1.',
+  ),
+  'perm.guide.step2.btn': ('Open App info', 'О приложении'),
+  'perm.guide.step3': (
+    'Go back to Accessibility → Thelxis and turn the service on. This card disappears once it is on.',
+    'Вернитесь в «Специальные возможности» → Thelxis и включите службу. Эта карточка исчезнет, когда она включится.',
+  ),
+  'perm.guide.step3.btn': ('Enable service', 'Включить службу'),
+  'perm.guide.recheck': ('Check again', 'Проверить снова'),
+  'perm.guide.oem': (
+    'Samsung: if "Allow restricted settings" is missing, turn off Auto Blocker (Settings → Security and privacy); on some versions the item sits at the bottom of the App info page instead of ⋮.',
+    'Samsung: если пункта «Разрешить ограниченные настройки» нет, отключите «Автоблокировщик» (Настройки → Безопасность и конфиденциальность); в некоторых версиях пункт находится внизу страницы «О приложении», а не в меню ⋮.',
+  ),
 
   // --- connect card ---
   'connect.title': ('Connect to a device', 'Подключиться к устройству'),

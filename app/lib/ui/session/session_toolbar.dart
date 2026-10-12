@@ -31,6 +31,8 @@ class SessionToolbar extends StatelessWidget {
     required this.onTouchMode,
     required this.onActualSize,
     required this.onEnd,
+    this.mouseButtonsOn = false,
+    this.onToggleMouseButtons,
     this.onBack,
     this.onMenuOpened,
   });
@@ -50,6 +52,10 @@ class SessionToolbar extends StatelessWidget {
   final ValueChanged<TouchMode> onTouchMode;
   final VoidCallback onActualSize;
   final VoidCallback onEnd;
+
+  /// Android: floating left / right mouse buttons. Null hides the control.
+  final bool mouseButtonsOn;
+  final VoidCallback? onToggleMouseButtons;
 
   /// Android: leave the session view without ending it.
   final VoidCallback? onBack;
@@ -99,6 +105,14 @@ class SessionToolbar extends StatelessWidget {
                     onPressed: onToggleKeyboard,
                   ),
                 if (!isDesktop && canControl) _touchModeMenu(context),
+                if (onToggleMouseButtons != null && canControl)
+                  IconButton(
+                    tooltip: l.t('toolbar.mouseButtons'),
+                    isSelected: mouseButtonsOn,
+                    icon: const Icon(Icons.ads_click),
+                    selectedIcon: const Icon(Icons.ads_click),
+                    onPressed: onToggleMouseButtons,
+                  ),
                 if (canClipboard)
                   IconButton(
                     tooltip: session.clipboardSyncOn ? l.t('toolbar.clipboard.on') : l.t('toolbar.clipboard.off'),
@@ -271,6 +285,9 @@ class SessionToolbar extends StatelessWidget {
                       item(l.t('toolbar.direct'), () => onTouchMode(TouchMode.direct),
                           checked: touchMode == TouchMode.direct),
                     ],
+                    if (onToggleMouseButtons != null && canControl)
+                      item(l.t('toolbar.mouseButtons'), onToggleMouseButtons!,
+                          icon: Icons.ads_click, checked: mouseButtonsOn),
                     const PopupMenuDivider(),
                     if (canFiles && session.files != null) ...[
                       item(

@@ -37,8 +37,9 @@ class _TouchInputLayerState extends State<TouchInputLayer> implements TouchGestu
   late final TouchGestureEngine _engine;
   final FocusNode _focus = FocusNode(debugLabel: 'remote-touch');
 
-  /// Virtual cursor in normalised remote coordinates.
-  final ValueNotifier<Offset> _cursor = ValueNotifier(const Offset(0.5, 0.5));
+  /// Virtual cursor in normalised remote coordinates (owned by the view
+  /// controller so the on-screen mouse buttons share it).
+  ValueNotifier<Offset> get _cursor => widget.view.cursor;
 
   ViewerSession get _s => widget.session;
 
@@ -62,7 +63,6 @@ class _TouchInputLayerState extends State<TouchInputLayer> implements TouchGestu
     _engine.dispose();
     _s.encoder.releaseAll();
     _focus.dispose();
-    _cursor.dispose();
     super.dispose();
   }
 

@@ -18,6 +18,7 @@ import 'package:thelxis/files/files.dart';
 import 'package:thelxis/net/peer_identity.dart';
 import 'package:thelxis/session/session_manager.dart';
 import 'package:thelxis/session/viewer_session.dart';
+import 'package:thelxis/ui/session/mouse_buttons_overlay.dart';
 import 'package:thelxis/ui/session/session_view.dart';
 import 'package:thelxis/ui/shell_controller.dart';
 import 'package:thelxis/ui/theme.dart';
@@ -584,6 +585,192 @@ void main() {
         'ku${0x7002B}',
         'ku${0x700E0}',
       ]);
+      await finish(tester);
+    });
+  });
+
+  group('input_state banner (PROTOCOL.md 6.2)', () {
+    testWidgets('shown while the host cannot inject, gone once it reports ok', (tester) async {
+      await desktopApp(tester);
+      const banner = ValueKey('input-state-banner');
+      expect(find.byKey(banner), findsNothing);
+
+      h.session.debugReceiveControl({'t': 'input_state', 'ok': false, 'reason': 'permission'});
+      await tester.pump();
+      expect(find.byKey(banner), findsOneWidget);
+      expect(find.textContaining('The request is already shown on that device'), findsOneWidget);
+
+      h.session.debugReceiveControl({'t': 'input_state', 'ok': false, 'reason': 'blocked'});
+      await tester.pump();
+      expect(find.textContaining('running as administrator'), findsOneWidget);
+
+      h.session.debugReceiveControl({'t': 'input_state', 'ok': true});
+      await tester.pump();
+      expect(find.byKey(banner), findsNothing);
+      await finish(tester);
+    });
+
+    testWidgets('the banner does not swallow input meant for the picture', (tester) async {
+      // Pillarboxed: the picture fills the height, so the banner sits over it.
+      await desktopApp(tester, size: const Size(1000, 500));
+      h.session.debugReceiveControl({'t': 'input_state', 'ok': false, 'reason': 'blocked'});
+      await tester.pump();
+      final at = tester.getCenter(find.byKey(const ValueKey('input-state-banner')));
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: at);
+      await mouse.down(at);
+      await mouse.up();
+      await tester.pump();
+      expect(h.ofType('md'), hasLength(1));
+      await mouse.removePointer();
+      await finish(tester);
+    });
+  });
+
+  group('Android mouse buttons', () {
+    Future<void> phone(
+      WidgetTester tester, {
+      Future<void> Function(AppSettings settings)? prefs,
+    }) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      h = _Harness();
+      await tester.runAsync(() async {
+        await h.setUp();
+        if (prefs != null) await prefs(h.services.settings);
+      });
+      await tester.pumpWidget(h.app());
+      await tester.pump(const Duration(milliseconds: 300));
+      h.input.clear();
+    }
+
+    Offset centre(WidgetTester tester, String label) => tester.getCenter(find.text(label));
+
+    testWidgets('on by default: Left / Right press and release at the touch cursor, other finger drags', (tester) async {
+      await phone(tester);
+      expect(find.byType(MouseButtonsOverlay), findsOneWidget);
+
+      final hold = await tester.startGesture(centre(tester, 'Left'), pointer: 1);
+      expect(h.ofType('md').single, {'t': 'md', 'b': 0, 'x': 0.5, 'y': 0.5});
+
+      // Second finger moves the touchpad cursor while the button is held.
+      final mover = await tester.startGesture(const Offset(100, 400), pointer: 2);
+      await mover.moveBy(const Offset(50, 0));
+      await tester.pump(const Duration(milliseconds: 20));
+      await mover.moveBy(const Offset(50, 0));
+      await tester.pump(const Duration(milliseconds: 20));
+      await mover.up();
+      await tester.pump(const Duration(milliseconds: 50));
+      final x = h.ofType('mm').last['x'] as double;
+      expect(x, greaterThan(0.5));
+
+      await hold.up();
+      final mu = h.ofType('mu').single;
+      expect(mu['b'], 0);
+      expect(mu['x'], closeTo(x, 1e-4));
+      expect(h.ofType('md'), hasLength(1), reason: 'the drag finger must not click');
+
+      h.input.clear();
+      final right = await tester.startGesture(centre(tester, 'Right'));
+      await right.up();
+      expect(h.input.map((m) => '${m['t']}${m['b']}'), ['md2', 'mu2']);
+      await finish(tester);
+    });
+
+    testWidgets('touching the pill does not click or move the remote cursor', (tester) async {
+      await phone(tester);
+      final grip = tester.getCenter(find.byIcon(Icons.drag_indicator_rounded));
+      await (await tester.startGesture(grip)).up();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(h.input, isEmpty);
+      await finish(tester);
+    });
+
+    testWidgets('hidden in view-only sessions and back when control returns', (tester) async {
+      await phone(tester);
+      expect(find.byType(MouseButtonsOverlay), findsOneWidget);
+      h.session.setViewOnly(true);
+      await tester.pump();
+      expect(find.byType(MouseButtonsOverlay), findsNothing);
+      h.session.setViewOnly(false);
+      await tester.pump();
+      expect(find.byType(MouseButtonsOverlay), findsOneWidget);
+      await finish(tester);
+    });
+
+    testWidgets('switching to view-only while a button is held releases it', (tester) async {
+      await phone(tester);
+      final hold = await tester.startGesture(centre(tester, 'Left'));
+      expect(h.session.encoder.heldButtons, {0});
+      h.session.setViewOnly(true);
+      await tester.pump();
+      expect(h.session.encoder.heldButtons, isEmpty);
+      expect(h.ofType('mu'), hasLength(1));
+      await hold.up();
+      expect(h.ofType('mu'), hasLength(1));
+      await finish(tester);
+    });
+
+    testWidgets('the toolbar menu turns them off and the choice is remembered', (tester) async {
+      await phone(tester);
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mouse buttons'));
+      await tester.pumpAndSettle();
+      expect(find.byType(MouseButtonsOverlay), findsNothing);
+      expect(h.services.settings.mouseButtons, isFalse);
+
+      // A new session view starts with the saved choice.
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(h.app());
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byType(MouseButtonsOverlay), findsNothing);
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mouse buttons'));
+      await tester.pumpAndSettle();
+      expect(find.byType(MouseButtonsOverlay), findsOneWidget);
+      expect(h.services.settings.mouseButtons, isTrue);
+      await finish(tester);
+    });
+
+    testWidgets('a dragged position is saved and restored', (tester) async {
+      await phone(tester);
+      final before = tester.getTopLeft(find.text('Left'));
+      final g = await tester.startGesture(tester.getCenter(find.byIcon(Icons.drag_indicator_rounded)));
+      await g.moveBy(const Offset(-120, -150));
+      await g.up();
+      await tester.pump();
+      final moved = tester.getTopLeft(find.text('Left'));
+      expect(moved.dx, lessThan(before.dx));
+      expect(moved.dy, lessThan(before.dy));
+      final saved = h.services.settings.mouseButtonsPosition;
+      expect(saved.dx, lessThan(0.96));
+      expect(saved.dy, lessThan(0.72));
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(h.app());
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.getTopLeft(find.text('Left')), moved);
+      await finish(tester);
+    });
+
+    testWidgets('a saved position is honoured at startup', (tester) async {
+      await phone(tester, prefs: (s) => s.setMouseButtonsPosition(Offset.zero));
+      // Top-left corner: below the toolbar reserve, at the left margin.
+      expect(tester.getTopLeft(find.text('Left')).dx, lessThan(120));
+      expect(tester.getTopLeft(find.text('Left')).dy, lessThan(100));
+      await finish(tester);
+    });
+
+    testWidgets('desktop has no mouse buttons overlay', (tester) async {
+      await desktopApp(tester);
+      expect(find.byType(MouseButtonsOverlay), findsNothing);
+      expect(find.byTooltip('Mouse buttons'), findsNothing);
       await finish(tester);
     });
   });

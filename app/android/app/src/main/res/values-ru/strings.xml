@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_label">Thelxis: удалённое управление</string>
+    <string name="accessibility_service_description">Позволяет авторизованным вами устройствам управлять этим телефоном или планшетом: Thelxis выполняет от их имени касания, свайпы, прокрутку, ввод текста и действия «Назад», «Домой» и «Недавние». Содержимое экрана читается только в поле ввода, чтобы вставить набранный текст, и нигде не сохраняется.</string>
+
+    <string name="capture_channel_name">Трансляция экрана</string>
+    <string name="capture_notification_title">Thelxis: экран транслируется</string>
+    <string name="capture_notification_text">Авторизованное вами устройство видит этот экран.</string>
+    <string name="capture_notification_stop">Остановить</string>
+
+    <string name="presence_channel_name">Доступность</string>
+    <string name="presence_notification_title">Thelxis доступен</string>
+    <string name="presence_notification_text">Входящие удалённые подключения разрешены.</string>
+</resources>

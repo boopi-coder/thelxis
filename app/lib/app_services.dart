@@ -3,6 +3,7 @@ import 'dart:io' show exit;
 
 import 'core/address_book.dart';
 import 'core/identity.dart';
+import 'core/log_file.dart';
 import 'core/settings.dart';
 import 'core/system_info.dart';
 import 'core/trusted_devices.dart';
@@ -148,6 +149,7 @@ class AppServices {
       await connectivity.stop();
       await desktop.quit();
     } finally {
+      LogFile.instance?.flushSync();
       exit(0);
     }
   }

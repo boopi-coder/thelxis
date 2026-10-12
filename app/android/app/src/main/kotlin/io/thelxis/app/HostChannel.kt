@@ -2,6 +2,7 @@ package io.thelxis.app
 
 import android.Manifest
 import android.app.Activity
+import android.app.AppOpsManager
 import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Context
@@ -12,6 +13,7 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
 import android.provider.Settings
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
@@ -39,6 +41,33 @@ class HostChannel(
         // Held by the process, not by one channel instance, so a recreated
         // Activity can still release it.
         private var multicastLock: WifiManager.MulticastLock? = null
+
+        /**
+         * AppOps name of the "restricted settings" gate (AppOpsManager.
+         * OPSTR_ACCESS_RESTRICTED_SETTINGS is @hide / @SystemApi, so the string
+         * is spelled out). The op exists since Android 13.
+         */
+        private const val OPSTR_ACCESS_RESTRICTED_SETTINGS = "android:access_restricted_settings"
+
+        /**
+         * Installers that deliver apps through the session-based install API,
+         * which the OS exempts from "restricted settings". Anything else
+         * (the package installer fed by a browser or file manager, no
+         * installer at all, unknown installers) is treated as a sideload.
+         */
+        private val STORE_INSTALLERS = setOf(
+            "com.android.vending",
+            "com.google.android.feedback",
+            "com.sec.android.app.samsungapps",
+            "com.huawei.appmarket",
+            "com.xiaomi.mipicks",
+            "com.xiaomi.market",
+            "com.heytap.market",
+            "com.oppo.market",
+            "com.bbk.appstore",
+            "com.amazon.venezia",
+            "com.android.shell", // adb install goes through a session as well
+        )
     }
 
     private val channel = MethodChannel(messenger, CHANNEL_NAME)
@@ -140,6 +169,11 @@ class HostChannel(
                 appContext.startActivity(intent)
                 result.success(null)
             }
+            "openAppDetails" -> {
+                openAppDetails()
+                result.success(null)
+            }
+            "isRestrictedSettingsLikely" -> result.success(isRestrictedSettingsLikely())
             "canDrawOverlays" -> result.success(Settings.canDrawOverlays(appContext))
             "requestOverlayPermission" -> {
                 val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
@@ -207,6 +241,68 @@ class HostChannel(
         // Entries are flattened component names separated by ':'; the short
         // form "pkg/.Class" is expanded by unflattenFromString.
         return enabled.split(':').any { ComponentName.unflattenFromString(it) == self }
+    }
+
+    /** Opens "App info" for Thelxis, where the "Allow restricted settings" item lives. */
+    private fun openAppDetails() {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            .setData(Uri.fromParts("package", appContext.packageName, null))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        appContext.startActivity(intent)
+    }
+
+    /**
+     * Android 13+ greys out the accessibility switch of sideloaded apps
+     * ("Restricted setting") until the user picks "Allow restricted settings"
+     * in App info. The OS offers no public query for that state, so this is a
+     * best effort: the app-ops mode when the OS lets us read it (from Android
+     * 14 the op is read-restricted and the call throws), else "not enabled yet
+     * and not installed by a store".
+     */
+    private fun isRestrictedSettingsLikely(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+        if (isAccessibilityServiceEnabled()) return false
+        restrictedByAppOps()?.let { return it }
+        return installedOutsideStore()
+    }
+
+    /** true = blocked, false = allowed, null = the OS would not tell us. */
+    private fun restrictedByAppOps(): Boolean? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
+        return try {
+            val ops = appContext.getSystemService(AppOpsManager::class.java) ?: return null
+            when (
+                ops.unsafeCheckOpRawNoThrow(
+                    OPSTR_ACCESS_RESTRICTED_SETTINGS,
+                    Process.myUid(),
+                    appContext.packageName,
+                )
+            ) {
+                AppOpsManager.MODE_ALLOWED -> false
+                AppOpsManager.MODE_IGNORED, AppOpsManager.MODE_ERRORED -> true
+                else -> null
+            }
+        } catch (e: Exception) {
+            // SecurityException (read-restricted op) or IllegalArgumentException
+            // (unknown op name on this build).
+            null
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun installedOutsideStore(): Boolean {
+        val installer: String? = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                appContext.packageManager
+                    .getInstallSourceInfo(appContext.packageName)
+                    .installingPackageName
+            } else {
+                appContext.packageManager.getInstallerPackageName(appContext.packageName)
+            }
+        } catch (e: Exception) {
+            null
+        }
+        return installer == null || installer !in STORE_INSTALLERS
     }
 
     private fun notificationsGranted(): Boolean {

@@ -32,7 +32,7 @@ enum HostChannel {
       case "screenCaptureStatus":
         result(CGPreflightScreenCaptureAccess())
       case "accessibilityStatus":
-        result(AXIsProcessTrusted())
+        result(HostChannel.canPostEvents())
       case "requestScreenCapture":
         if CGPreflightScreenCaptureAccess() {
           result(true)
@@ -47,10 +47,14 @@ enum HostChannel {
         // "AXTrustedCheckOptionPrompt" is the value of kAXTrustedCheckOptionPrompt.
         let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         let trusted = AXIsProcessTrustedWithOptions(options)
-        if !trusted {
+        var canPost = true
+        if #available(macOS 10.15, *), !CGPreflightPostEventAccess() {
+          canPost = CGRequestPostEventAccess()
+        }
+        if !trusted || !canPost {
           HostChannel.openPane("Privacy_Accessibility")
         }
-        result(trusted)
+        result(trusted && canPost)
       case "setDockIconVisible":
         let args = call.arguments as? [String: Any]
         HostChannel.setDockIconVisible(args?["visible"] as? Bool ?? true)
@@ -79,6 +83,17 @@ enum HostChannel {
         _ = NSApp.setActivationPolicy(.accessory)
       }
     }
+  }
+
+  /// CGEventPost is gated by its own TCC service (PostEvent) since 10.15, and
+  /// after an update replaces the binary AXIsProcessTrusted can disagree with
+  /// it, so input only works when both say yes.
+  private static func canPostEvents() -> Bool {
+    let trusted = AXIsProcessTrusted()
+    if #available(macOS 10.15, *) {
+      return trusted && CGPreflightPostEventAccess()
+    }
+    return trusted
   }
 
   private static func openPane(_ pane: String) {

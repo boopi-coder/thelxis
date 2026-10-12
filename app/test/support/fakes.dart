@@ -163,11 +163,17 @@ class FakeHostPlatform implements HostPlatform {
   @override
   bool get inputSupported => inputOk;
 
-  @override
-  Future<PermissionStatus> permissionStatus(HostPermission permission) async => PermissionStatus.granted;
+  /// Status reported for [HostPermission.inputControl]; tests flip it to model
+  /// a missing macOS Accessibility grant.
+  PermissionStatus inputControlStatus = PermissionStatus.granted;
+  final List<HostPermission> permissionRequests = [];
 
   @override
-  Future<void> requestPermission(HostPermission permission) async {}
+  Future<PermissionStatus> permissionStatus(HostPermission permission) async =>
+      permission == HostPermission.inputControl ? inputControlStatus : PermissionStatus.granted;
+
+  @override
+  Future<void> requestPermission(HostPermission permission) async => permissionRequests.add(permission);
 
   @override
   Future<List<HostDisplay>> displays() async => displayList;

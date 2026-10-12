@@ -15,6 +15,9 @@ import 'impl_log.dart';
 import 'input_math.dart';
 import 'keymap/hid_to_win_scancode.dart';
 
+/// `TOKEN_INFORMATION_CLASS.TokenElevation`.
+const int _tokenElevationClass = 20;
+
 const int _xButton1 = 0x0001;
 const int _xButton2 = 0x0002;
 
@@ -131,7 +134,7 @@ class WindowsHostPlatform implements HostPlatform {
   InputInjector get input => _input;
 }
 
-class WindowsInputInjector implements InputInjector {
+class WindowsInputInjector implements InputInjector, InjectionReport {
   /// Scratch INPUT reused for every single-event call. The UI isolate is
   /// single-threaded, so one buffer is safe and avoids an allocation per
   /// mouse move.
@@ -146,6 +149,82 @@ class WindowsInputInjector implements InputInjector {
 
   final Set<int> _heldKeys = <int>{};
   final Set<MouseButton> _heldButtons = <MouseButton>{};
+
+  /// When `SendInput` last injected fewer events than asked for (secure
+  /// desktop, UAC), or null after a later call went through.
+  DateTime? _rejectedAt;
+
+  /// How long a refused `SendInput` keeps counting as "blocked". It is the
+  /// only signal for the secure desktop, but a viewer who stops sending input
+  /// once warned would otherwise keep the warning forever.
+  static const _rejectionMemory = Duration(seconds: 6);
+
+  /// Whether this process runs elevated; resolved on first use.
+  bool? _selfElevated;
+
+  @override
+  bool get injectionRejected {
+    final at = _rejectedAt;
+    if (at != null && DateTime.now().difference(at) < _rejectionMemory) return true;
+    try {
+      return _foregroundOutranksUs();
+    } catch (e) {
+      implLog('foreground integrity check failed', e);
+      return false;
+    }
+  }
+
+  /// UIPI makes `SendInput` drop events aimed at a window of a more privileged
+  /// process *without* any error (the return value still says "sent"), so the
+  /// only way to know is to look at who has the focus: an elevated or
+  /// otherwise unopenable process while this one is not elevated.
+  bool _foregroundOutranksUs() {
+    final hwnd = GetForegroundWindow();
+    if (hwnd == 0) return false;
+    final pid = calloc<Uint32>();
+    try {
+      GetWindowThreadProcessId(hwnd, pid);
+      if (pid.value == 0 || pid.value == GetCurrentProcessId()) return false;
+      final self = _selfElevated ??= (_isElevated(GetCurrentProcess()) ?? false);
+      if (self) return false;
+      final process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid.value);
+      // A process we cannot even query is more privileged than we are.
+      if (process == 0) return true;
+      try {
+        return _isElevated(process) ?? true;
+      } finally {
+        CloseHandle(process);
+      }
+    } finally {
+      calloc.free(pid);
+    }
+  }
+
+  /// `TokenIsElevated` of [process], or null when its token cannot be read.
+  bool? _isElevated(int process) {
+    final token = calloc<IntPtr>();
+    final value = calloc<Uint32>();
+    final length = calloc<Uint32>();
+    try {
+      if (OpenProcessToken(process, TOKEN_QUERY, token) == 0) return null;
+      try {
+        final ok = GetTokenInformation(
+          token.value,
+          _tokenElevationClass,
+          value,
+          sizeOf<Uint32>(),
+          length,
+        );
+        return ok == 0 ? null : value.value != 0;
+      } finally {
+        CloseHandle(token.value);
+      }
+    } finally {
+      calloc.free(token);
+      calloc.free(value);
+      calloc.free(length);
+    }
+  }
 
   @override
   void mouseMove(HostDisplay display, double nx, double ny) {
@@ -378,6 +457,7 @@ class WindowsInputInjector implements InputInjector {
 
   void _submit(Pointer<INPUT> inputs, int count) {
     final sent = SendInput(count, inputs, sizeOf<INPUT>());
+    _rejectedAt = sent == count ? null : DateTime.now();
     if (sent != count) {
       // Typically UIPI: the foreground window is elevated or on the secure
       // desktop (UAC / lock screen) and this process is not.

@@ -8,11 +8,16 @@ class Logger {
   const Logger(this.tag);
 
   /// Minimum level that is emitted. Debug builds log everything; release
-  /// builds keep warnings and errors so field reports are still diagnosable.
-  static LogLevel minLevel = kDebugMode ? LogLevel.debug : LogLevel.warn;
+  /// builds keep info and above, because the on-device diagnostic log
+  /// (`log_file.dart`) needs the session flow to make field reports useful.
+  static LogLevel minLevel = kDebugMode ? LogLevel.debug : LogLevel.info;
 
   /// Test hook: receives every emitted line instead of `debugPrint`.
   static void Function(LogLevel level, String line)? sink;
+
+  /// The on-device diagnostic log. Independent of [sink] so tests that
+  /// silence output do not also silence a log file they installed.
+  static void Function(LogLevel level, String line)? fileSink;
 
   final String tag;
 
@@ -28,6 +33,7 @@ class Logger {
     if (error != null) buffer.write(' ($error)');
     if (stack != null && kDebugMode) buffer.write('\n$stack');
     final line = buffer.toString();
+    fileSink?.call(level, line);
     final s = sink;
     if (s != null) {
       s(level, line);

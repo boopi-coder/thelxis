@@ -26,6 +26,7 @@ import 'clipboard_sync.dart';
 import 'host_auth.dart';
 import 'host_credentials.dart';
 import 'host_input.dart';
+import 'input_health.dart';
 import 'ice_config.dart';
 import 'prompts.dart';
 import 'quality.dart';
@@ -89,8 +90,14 @@ class HostSession extends SessionBase {
     this.turnHost,
     this.reversePermissions,
     this.forcePublicStun = false,
+    Duration inputCheckInterval = const Duration(seconds: 3),
   }) {
     _input = HostInputDispatcher(env.platform.input);
+    _health = InputHealthMonitor(
+      platform: env.platform,
+      interval: inputCheckInterval,
+      onChanged: _onInputHealth,
+    );
   }
 
   final HostEnv env;
@@ -107,6 +114,7 @@ class HostSession extends SessionBase {
   final bool forcePublicStun;
 
   late final HostInputDispatcher _input;
+  late final InputHealthMonitor _health;
   RTCPeerConnection? _pc;
   RTCDataChannel? _control;
   RTCDataChannel? _inputChannel;
@@ -199,6 +207,10 @@ class HostSession extends SessionBase {
 
   /// Whether the viewer may currently inject input.
   bool get controlEnabled => _permissions.control && env.platform.inputSupported;
+
+  /// Why input from the viewer currently has no effect although it is allowed
+  /// (missing OS permission, input blocked by the OS), or null.
+  InputIssue? get inputIssue => _health.issue;
 
   Future<void> start() async {
     _listenSignaling();
@@ -549,6 +561,7 @@ class HostSession extends SessionBase {
     _sendDisplays();
     if (_permissions.clipboard) await _startClipboard();
     if (!_ended) setPhase(SessionPhase.active);
+    _watchInput();
   }
 
   // --- media -------------------------------------------------------------
@@ -707,6 +720,26 @@ class HostSession extends SessionBase {
     _input.enabled = controlEnabled;
     if (!allowed) _input.releaseAll();
     _send(PermissionsMessage(_permissions));
+    _watchInput();
+    notifyListeners();
+  }
+
+  /// Starts or stops the input health check to match whether the viewer holds
+  /// control (PROTOCOL.md 6.2 `input_state`).
+  void _watchInput() {
+    if (_ended) return;
+    if (controlEnabled) {
+      unawaited(_health.start());
+    } else {
+      _health.stop();
+      notifyListeners();
+    }
+  }
+
+  void _onInputHealth(InputIssue? issue) {
+    if (_ended) return;
+    _send(issue == null ? const InputStateMessage.ok() : InputStateMessage.failing(issue));
+    if (issue != null) _log.w('input from the viewer cannot take effect: ${issue.name}');
     notifyListeners();
   }
 
@@ -727,6 +760,7 @@ class HostSession extends SessionBase {
     _restartTimer?.cancel();
     _failTimer?.cancel();
     _poller?.stop();
+    _health.stop();
     _clipboard?.dispose();
     _input
       ..enabled = false

@@ -1,14 +1,14 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/strings.dart';
 import '../../platform/host_platform.dart';
+import '../../platform/impl/android_host.dart';
 import '../../update/ui/update_banner.dart';
 import '../../update/update_service.dart';
 import '../theme.dart';
 import '../widgets/surface.dart';
+import 'accessibility_guide.dart';
 
 /// One compact "Setup needed" card above the devices grid: missing OS
 /// permissions and a pending update, as small rows. Draws nothing when
@@ -22,6 +22,10 @@ class SetupCard extends StatefulWidget {
 
 class _SetupCardState extends State<SetupCard> with WidgetsBindingObserver {
   Future<List<HostPermission>>? _missing;
+
+  /// Android only: the accessibility switch is probably blocked as a
+  /// "Restricted setting" (see [AccessibilityGuide]).
+  bool _restrictedLikely = false;
 
   @override
   void initState() {
@@ -39,7 +43,14 @@ class _SetupCardState extends State<SetupCard> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // The user may have just granted a permission in system settings.
-    if (state == AppLifecycleState.resumed) setState(() => _missing = _load());
+    if (state == AppLifecycleState.resumed) _reload();
+  }
+
+  // A block body: setState must not be handed the Future that `=>` would return.
+  void _reload() {
+    setState(() {
+      _missing = _load();
+    });
   }
 
   Future<List<HostPermission>> _load() async {
@@ -53,6 +64,10 @@ class _SetupCardState extends State<SetupCard> with WidgetsBindingObserver {
         // An unavailable status check is not worth bothering the user about.
       }
     }
+    final android = platform is AndroidHostPlatform ? platform : null;
+    _restrictedLikely = android != null &&
+        out.contains(HostPermission.inputControl) &&
+        await android.isRestrictedSettingsLikely();
     return out;
   }
 
@@ -74,9 +89,17 @@ class _SetupCardState extends State<SetupCard> with WidgetsBindingObserver {
               for (final m in missing)
                 _PermissionRow(
                   permission: m,
+                  android: context.read<HostPlatform>() is AndroidHostPlatform,
+                  guide: m == HostPermission.inputControl && _restrictedLikely
+                      ? AccessibilityGuide(
+                          onOpenAccessibility: () => context.read<HostPlatform>().requestPermission(m),
+                          onOpenAppInfo: () => (context.read<HostPlatform>() as AndroidHostPlatform).openAppDetails(),
+                          onRecheck: _reload,
+                        )
+                      : null,
                   onGrant: () async {
                     await context.read<HostPlatform>().requestPermission(m);
-                    if (mounted) setState(() => _missing = _load());
+                    if (mounted) _reload();
                   },
                 ),
               if (hasUpdate)
@@ -126,10 +149,14 @@ class _SetupCardState extends State<SetupCard> with WidgetsBindingObserver {
 }
 
 class _PermissionRow extends StatelessWidget {
-  const _PermissionRow({required this.permission, required this.onGrant});
+  const _PermissionRow({required this.permission, required this.onGrant, required this.android, this.guide});
 
   final HostPermission permission;
   final VoidCallback onGrant;
+  final bool android;
+
+  /// Replaces the Grant button and the one-line hint with a step-by-step guide.
+  final Widget? guide;
 
   @override
   Widget build(BuildContext context) {
@@ -152,7 +179,7 @@ class _PermissionRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(screen ? s.t('perm.screen') : s.t('perm.input'), style: t.bodyMedium),
-                if (!screen && Platform.isAndroid)
+                if (!screen && android && guide == null)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(
@@ -160,11 +187,15 @@ class _PermissionRow extends StatelessWidget {
                       style: t.bodySmall?.copyWith(color: c.textSecondary),
                     ),
                   ),
+                if (guide != null)
+                  Padding(padding: const EdgeInsets.only(top: Gap.s, right: Gap.m, bottom: Gap.xs), child: guide),
               ],
             ),
           ),
-          const SizedBox(width: Gap.s),
-          TextButton(onPressed: onGrant, child: Text(s.t('perm.grant'))),
+          if (guide == null) ...[
+            const SizedBox(width: Gap.s),
+            TextButton(onPressed: onGrant, child: Text(s.t('perm.grant'))),
+          ],
         ],
       ),
     );

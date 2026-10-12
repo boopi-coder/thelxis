@@ -77,6 +77,28 @@ void main() {
       expect((ControlMessage.parse(_roundTrip(const ByeMessage('timeout').toJson()))! as ByeMessage).reason, 'timeout');
     });
 
+    test('input_state: ok, permission and blocked round-trip with the documented wire shape', () {
+      expect(const InputStateMessage.ok().toJson(), {'t': 'input_state', 'ok': true});
+      expect(const InputStateMessage.failing(InputIssue.permission).toJson(),
+          {'t': 'input_state', 'ok': false, 'reason': 'permission'});
+      expect(const InputStateMessage.failing(InputIssue.blocked).toJson(),
+          {'t': 'input_state', 'ok': false, 'reason': 'blocked'});
+      for (final m in const [
+        InputStateMessage.ok(),
+        InputStateMessage.failing(InputIssue.permission),
+        InputStateMessage.failing(InputIssue.blocked),
+      ]) {
+        final back = ControlMessage.parse(_roundTrip(m.toJson()))! as InputStateMessage;
+        expect(back.ok, m.ok);
+        expect(back.issue, m.issue);
+      }
+    });
+
+    test('input_state with a reason this version does not know is ignored', () {
+      expect(ControlMessage.parse({'t': 'input_state', 'ok': false, 'reason': 'solar_flare'}), isNull);
+      expect(ControlMessage.parse({'t': 'input_state', 'ok': false}), isNull);
+    });
+
     test('unknown types and malformed input are ignored', () {
       expect(ControlMessage.parse({'t': 'from_the_future', 'x': 1}), isNull);
       expect(ControlMessage.parse({'t': 'quality', 'preset': 'ludicrous'}), isNull);

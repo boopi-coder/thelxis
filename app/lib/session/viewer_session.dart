@@ -127,6 +127,8 @@ class ViewerSession extends SessionBase {
   String? _notice;
   bool _becameTrusted = false;
   bool _signalingDetached = false;
+  InputIssue? _inputIssue;
+  bool _loggedInputDrop = false;
   final List<String> chatLog = [];
 
   // --- test seams: lets tests drive the protocol without a PeerConnection ---
@@ -196,6 +198,10 @@ class ViewerSession extends SessionBase {
   bool get clipboardSyncOn => _clipboardOn && (_permissions?.clipboard ?? false);
   bool get hasFirstFrame => _frameSeen;
   bool get signalingDetached => _signalingDetached;
+
+  /// Why the host cannot act on our input although it granted control
+  /// (`input_state`, PROTOCOL.md 6.2), or null. Meaningless without control.
+  InputIssue? get inputIssue => (_permissions?.control ?? false) ? _inputIssue : null;
 
   DisplayInfo? get activeDisplay {
     for (final d in _displays) {
@@ -399,9 +405,17 @@ class ViewerSession extends SessionBase {
         _displays = items;
         _activeDisplay = active;
         notifyListeners();
+      case InputStateMessage(:final issue):
+        _inputIssue = issue;
+        notifyListeners();
       case PermissionsMessage(:final permissions):
         // Release first: once control is off, `_sendInput` drops everything.
-        if (!permissions.control) encoder.releaseAll();
+        if (!permissions.control) {
+          encoder.releaseAll();
+          // The host re-checks when control resumes and reports afresh; an
+          // old verdict would come back as a stale banner.
+          _inputIssue = null;
+        }
         _permissions = permissions;
         if (!permissions.clipboard) _clipboard?.stop();
         notifyListeners();
@@ -573,7 +587,15 @@ class ViewerSession extends SessionBase {
     if (viewOnly || _ended) return;
     debugInputTap?.call(m.toJson());
     final dc = _inputChannel;
-    if (dc == null || dc.state != RTCDataChannelState.RTCDataChannelOpen) return;
+    if (dc == null || dc.state != RTCDataChannelState.RTCDataChannelOpen) {
+      // Input silently going nowhere is the worst failure to debug from a
+      // user's report; say so once (never what was typed).
+      if (!_loggedInputDrop) {
+        _loggedInputDrop = true;
+        _log.w('input dropped: channel ${dc == null ? 'missing' : 'not open (${dc.state})'}');
+      }
+      return;
+    }
     unawaited(dc.send(RTCDataChannelMessage(jsonEncode(m.toJson()))));
   }
 

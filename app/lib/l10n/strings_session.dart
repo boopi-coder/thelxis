@@ -71,6 +71,12 @@ final Map<String, (String, String)> kSessionStrings = {
   'toolbar.fullscreen.exit': ('Exit full screen', 'Выйти из полноэкранного режима'),
   'toolbar.stats': ('Statistics', 'Статистика'),
   'toolbar.end': ('End', 'Завершить'),
+  'toolbar.mouseButtons': ('Mouse buttons', 'Кнопки мыши'),
+  'mouse.left': ('Left', 'Левая'),
+  'mouse.right': ('Right', 'Правая'),
+  'mouse.left.a11y': ('Left mouse button', 'Левая кнопка мыши'),
+  'mouse.right.a11y': ('Right mouse button', 'Правая кнопка мыши'),
+  'mouse.drag': ('Drag to move', 'Перетащите, чтобы переместить'),
 
   'quality.auto': ('Auto', 'Авто'),
   'quality.speed': ('Speed (30 fps, low bandwidth)', 'Скорость (30 к/с, мало трафика)'),
@@ -92,6 +98,25 @@ final Map<String, (String, String)> kSessionStrings = {
   'key.power': ('Power menu', 'Меню питания'),
   'key.lock': ('Lock screen', 'Заблокировать экран'),
   'key.taskManager': ('Task Manager', 'Диспетчер задач'),
+
+  // --- input_state banners (viewer: why the picture ignores us; host: what to fix) ---
+  'session.input.permission': (
+    'Control is unavailable: the remote device has not granted the permission to control it (Accessibility). The request is already shown on that device.',
+    'Управление недоступно: на удалённом устройстве не выдано разрешение на управление (Универсальный доступ / Специальные возможности). Запрос уже показан на том устройстве.',
+  ),
+  'session.input.blocked': (
+    'Windows blocks input into a window running as administrator. Switch to another window or run Thelxis as administrator.',
+    'Windows блокирует ввод в окно, запущенное от имени администратора. Переключитесь на другое окно или запустите Thelxis от имени администратора.',
+  ),
+  'banner.input.permission.macos': (
+    'Control is unavailable: grant Thelxis the "Accessibility" permission in System Settings. If the switch is already on, turn it off and on again.',
+    'Управление недоступно: выдайте Thelxis разрешение „Универсальный доступ“ в Системных настройках. Если переключатель уже включён — выключите и включите его снова.',
+  ),
+  'banner.input.permission.android': (
+    'Control is unavailable: turn on the Thelxis service in Settings → Accessibility. If it is already on, turn it off and on again.',
+    'Управление недоступно: включите службу Thelxis в Настройках → «Специальные возможности». Если она уже включена — выключите и включите её снова.',
+  ),
+  'banner.input.openSettings': ('Open settings', 'Открыть настройки'),
 
   // --- files panel ---
   'files.unavailable': ('File transfer is not available yet', 'Передача файлов пока недоступна'),

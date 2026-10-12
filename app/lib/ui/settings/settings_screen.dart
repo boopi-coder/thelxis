@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/identity.dart';
 import '../../core/links.dart';
+import '../../core/log_file.dart';
 import '../../core/settings.dart';
 import '../../core/system_info.dart';
 import '../../desktop/desktop_integration.dart';
@@ -16,6 +17,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/rows.dart';
 import '../widgets/thelxis_logo.dart';
+import 'diagnostic_log_row.dart';
 import 'permanent_password_dialog.dart';
 import 'trusted_devices_section.dart';
 
@@ -257,6 +259,8 @@ class SettingsScreen extends StatelessWidget {
               title: s.t('settings.noServers'),
               subtitle: s.t('settings.noServers.hint'),
             ),
+            // Only when file logging runs, so the card never shows an empty row.
+            if (LogFile.instance != null) DiagnosticLogRow(showFolder: desktop.isDesktop),
             const _SupportCard(),
           ],
         ),

@@ -11,6 +11,7 @@ import 'package:thelxis/core/system_info.dart';
 import 'package:thelxis/files/files.dart';
 import 'package:thelxis/protocol/models.dart';
 import 'package:thelxis/session/prompts.dart';
+import 'package:thelxis/session/session_base.dart';
 import 'package:thelxis/session/session_manager.dart';
 import 'package:thelxis/session/viewer_session.dart';
 import 'package:thelxis/net/peer_identity.dart';
@@ -271,6 +272,9 @@ void main() {
         await rig.nextOf('auth_result');
         rig.session.debugAttachFiles(files.b);
         sv.sessions.trackHostSession(rig.session);
+        // The banner only offers files for an active session; on a loaded
+        // machine capture may still be starting when the first frame pumps.
+        await untilTrue(() => rig.session.phase == SessionPhase.active);
       });
       return sv;
     }

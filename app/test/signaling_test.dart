@@ -112,6 +112,33 @@ void main() {
     );
   });
 
+  test('a remembered key that differs is a hard identity-mismatch failure', () async {
+    final stranger = await _identity(9);
+    await expectLater(
+      dialer.dial(
+        addresses: [target()],
+        want: HelloWant.control,
+        expectedId: bob.id,
+        expectedKey: stranger.publicKeyB64,
+      ),
+      throwsA(isA<DialException>().having((e) => e.kind, 'kind', DialFailure.identityMismatch)),
+    );
+  });
+
+  test('the remembered key of the right device connects', () async {
+    final incomingFuture = listener.incoming.first;
+    final result = await dialer.dial(
+      addresses: [target()],
+      want: HelloWant.control,
+      expectedId: bob.id,
+      expectedKey: bob.publicKeyB64,
+    );
+    final incoming = await incomingFuture;
+    expect(result.peer.id, bob.id);
+    result.channel.dispose();
+    incoming.channel.dispose();
+  });
+
   test('probe returns the verified identity without creating a session', () async {
     final peer = await dialer.probe([target()]);
     expect(peer.id, bob.id);

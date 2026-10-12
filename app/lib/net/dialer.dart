@@ -97,18 +97,20 @@ class Dialer {
 
   /// Connects to the first address that completes a handshake with the peer
   /// holding [expectedId]. When [expectedId] is null the caller must have
-  /// confirmed the peer via [probe] first.
+  /// confirmed the peer via [probe] first. [expectedKey] (the full public key
+  /// remembered from an earlier session) pins the peer beyond the 80-bit ID.
   Future<DialResult> dial({
     required List<NetAddress> addresses,
     required HelloWant want,
     String? expectedId,
+    String? expectedKey,
   }) async {
     // A gateway only pipes bytes: without a known ID to verify there would be
     // nothing to stop it (or anything it can reach) impersonating the target.
     addresses = _usableRoutes(addresses, expectedId);
     final e = await _race(
       addresses,
-      (addr) => _attempt(addr, want: want, expectedId: expectedId),
+      (addr) => _attempt(addr, want: want, expectedId: expectedId, expectedKey: expectedKey),
     );
     final channel = SignalingChannel(
       sid: e.sid,
@@ -157,7 +159,13 @@ class Dialer {
   ) async {
     final e = await _race(
       addresses,
-      (addr) => _attempt(addr, want: want, expectedId: peer.id, resumeSid: sid),
+      (addr) => _attempt(
+        addr,
+        want: want,
+        expectedId: peer.id,
+        expectedKey: peer.key,
+        resumeSid: sid,
+      ),
     );
     return ResumedConnection(e.ws, e.dialerNonce, e.listenerNonce);
   }
@@ -274,6 +282,7 @@ class Dialer {
     NetAddress addr, {
     required HelloWant want,
     String? expectedId,
+    String? expectedKey,
     String? resumeSid,
     bool probeOnly = false,
   }) async {
@@ -298,6 +307,7 @@ class Dialer {
         addr,
         want: want,
         expectedId: expectedId,
+        expectedKey: expectedKey,
         resumeSid: resumeSid,
         probeOnly: probeOnly,
       ).timeout(handshakeTimeout);
@@ -314,6 +324,7 @@ class Dialer {
     NetAddress addr, {
     required HelloWant want,
     String? expectedId,
+    String? expectedKey,
     String? resumeSid,
     required bool probeOnly,
   }) async {
@@ -360,7 +371,8 @@ class Dialer {
     if (!sigOk) {
       throw const DialException(DialFailure.badSignature, 'Listener signature invalid');
     }
-    if (expectedId != null && listener.id != expectedId) {
+    if ((expectedId != null && listener.id != expectedId) ||
+        (expectedKey != null && listener.key != expectedKey)) {
       _log.w('identity mismatch at ${addr.host}');
       throw DialException(
         DialFailure.identityMismatch,
